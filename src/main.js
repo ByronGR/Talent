@@ -399,6 +399,37 @@ async function loadDashboard(user) {
   }
 }
 
+async function loadPublicPage() {
+  const activePage = pageFromPath();
+  if (activePage === "overview") {
+    setState({ user: null, candidate: null, loading: false, view: "login", activePage: "overview" });
+    return;
+  }
+
+  let jobs = demoJobs;
+  try {
+    const openings = await listOpenJobs();
+    if (openings.length) jobs = openings.map(normalizeRole);
+  } catch (error) {
+    console.warn(error);
+  }
+
+  setState({
+    user: null,
+    candidate: {
+      name: "Guest candidate",
+      availability: "open",
+      headline: "Preview mode"
+    },
+    applications: [],
+    jobs,
+    loading: false,
+    view: "dashboard",
+    activePage,
+    message: "Preview mode. Sign in with Google to save your profile, apply, upload CVs, or track your actual pipeline."
+  });
+}
+
 function renderDashboard() {
   app.innerHTML = `
     <main class="dashboard">
@@ -414,7 +445,7 @@ function renderDashboard() {
             <button class="${state.activePage === key ? "active" : ""}" data-page="${key}">${icon(iconName)} ${label}</button>
           `).join("")}
         </nav>
-        <button id="signOut" class="ghost-action">${icon("log-out")} Sign out</button>
+        <button id="${state.user ? "signOut" : "signIn"}" class="ghost-action">${icon(state.user ? "log-out" : "log-in")} ${state.user ? "Sign out" : "Sign in"}</button>
       </aside>
       <section class="workspace">
         <header class="topbar">
@@ -648,7 +679,11 @@ function renderLoading() {
 }
 
 function bindDashboardEvents() {
-  document.querySelector("#signOut").addEventListener("click", () => signOut(auth));
+  document.querySelector("#signOut")?.addEventListener("click", () => signOut(auth));
+  document.querySelector("#signIn")?.addEventListener("click", () => {
+    window.history.pushState({ page: "overview" }, "", "/");
+    setState({ view: "login", activePage: "overview", message: "" });
+  });
   document.querySelectorAll("[data-page]").forEach((button) => {
     button.addEventListener("click", () => setActivePage(button.dataset.page));
   });
@@ -656,6 +691,7 @@ function bindDashboardEvents() {
     const availability = event.target.value;
     setState({ candidate: { ...state.candidate, availability } });
     if (state.user && hasFirebaseConfig) await updateCandidateAvailability(state.user.uid, availability);
+    else setState({ message: "Sign in with Google to save availability." });
   });
   document.querySelector("#filterMatches")?.addEventListener("click", () => {
     document.querySelector("#filteredMatches")?.classList.toggle("is-hidden");
@@ -669,6 +705,8 @@ function bindDashboardEvents() {
         await applyToJob(state.user.uid, job);
         await loadDashboard(state.user);
         setActivePage("applications");
+      } else {
+        setState({ message: "Sign in with Google to apply to this opening." });
       }
     });
   });
@@ -691,6 +729,10 @@ function bindDashboardEvents() {
       skills: form.getAll("skills"),
       summary: form.get("summary")
     };
+    if (!state.user) {
+      setState({ candidate: { ...state.candidate, ...data }, message: "Preview updated. Sign in with Google to save this profile." });
+      return;
+    }
     try {
       await updateCandidateProfile(state.user.uid, data);
       setState({ candidate: { ...state.candidate, ...data }, message: "Profile saved." });
@@ -703,6 +745,10 @@ function bindDashboardEvents() {
     const form = new FormData(event.currentTarget);
     const file = form.get("cv");
     if (!file?.name) return;
+    if (!state.user) {
+      setState({ message: "Sign in with Google to upload and store CVs." });
+      return;
+    }
     try {
       const cv = await uploadCandidateCv(state.user.uid, file, form.get("label"));
       setState({
@@ -721,19 +767,26 @@ function bindDashboardEvents() {
 
 function render() {
   if (state.loading) return renderLoading();
-  if (state.view === "dashboard" && state.user) return renderDashboard();
+  if (state.view === "dashboard") return renderDashboard();
   renderLogin();
 }
 
 window.addEventListener("popstate", () => {
-  if (state.view === "dashboard") setActivePage(pageFromPath(), false);
+  const page = pageFromPath();
+  if (page === "overview" && !state.user) {
+    setState({ view: "login", activePage: "overview", message: "" });
+  } else if (state.view === "dashboard") {
+    setActivePage(page, false);
+  } else {
+    loadPublicPage();
+  }
 });
 
 if (hasFirebaseConfig) {
   onAuthStateChanged(auth, (user) => {
     if (user) loadDashboard(user);
-    else setState({ user: null, candidate: null, loading: false, view: "login" });
+    else loadPublicPage();
   });
 } else {
-  setState({ loading: false, view: "login" });
+  loadPublicPage();
 }
