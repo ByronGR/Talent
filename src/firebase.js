@@ -96,10 +96,10 @@ export async function sendCandidateAccountCreatedEmail(candidate = {}) {
 }
 
 async function sendCandidateApplicationSubmittedEmail(candidate = {}, job = {}) {
-  const email = String(candidate.email || auth?.currentUser?.email || "").trim().toLowerCase();
+  const email = String(candidate?.email || auth?.currentUser?.email || "").trim().toLowerCase();
   if (!email) return { ok: false, skipped: true, reason: "Missing candidate email" };
-  const displayName = candidate.name || auth?.currentUser?.displayName || "";
-  const firstName = candidate.firstName || displayName.split(/\s+/)[0] || "there";
+  const displayName = candidate?.name || auth?.currentUser?.displayName || "";
+  const firstName = candidate?.firstName || displayName.split(/\s+/)[0] || "there";
   const response = await fetch(emailApiUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -445,6 +445,8 @@ async function applyToJob(uid, job) {
     title: job.title || job.role || "Untitled role",
     clientName: job.orgName || job.clientName || job.company || "Nearwork client",
     status: "applied",
+    inPipeline: false,
+    isMockData: false,
     source: "talent.nearwork.co",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
