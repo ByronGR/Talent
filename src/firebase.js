@@ -416,32 +416,66 @@ async function applyToJob(uid, job) {
   requireFirebase();
   const code = job.code || job.id;
   const candidate = await getCandidate(uid).catch(() => null);
+  const candidateCode = candidate?.candidateCode || candidateCodeForUid(uid);
+  const appliedDate = new Date().toISOString().slice(0, 10);
+  const embeddedApp = {
+    opening: code,
+    openingCode: code,
+    jobId: code,
+    role: job.title || job.role || "Untitled role",
+    openingTitle: job.title || job.role || "Untitled role",
+    applied: appliedDate,
+    appliedAt: appliedDate,
+    status: "applied",
+    outcome: "Application only",
+    source: "talent.nearwork.co"
+  };
   const application = {
     candidateId: uid,
-    candidateCode: candidate?.candidateCode || candidateCodeForUid(uid),
+    ownerUid: uid,
+    authUid: uid,
+    candidateDocId: candidateCode,
+    candidateCode,
     candidateEmail: candidate?.email || "",
     candidateName: candidate?.name || "",
     openingCode: code,
     jobId: code,
+    openingTitle: job.title || job.role || "Untitled role",
     jobTitle: job.title || job.role || "Untitled role",
+    title: job.title || job.role || "Untitled role",
     clientName: job.orgName || job.clientName || job.company || "Nearwork client",
-    status: "submitted",
+    status: "applied",
     source: "talent.nearwork.co",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   };
   await addDoc(collection(db, collections.applications), application);
-  await setDoc(doc(db, collections.candidates, application.candidateCode), {
+
+  // Update candidates/{code} — embed full application object so admin can
+  // find this applicant under the opening even without reading the applications collection
+  await setDoc(doc(db, collections.candidates, candidateCode), {
     ...toAtsCandidate(uid, {
       ...(candidate || {}),
-      candidateCode: application.candidateCode,
-      applications: arrayUnion(code),
+      candidateCode,
       appliedBefore: true,
-      lastContact: new Date().toISOString().slice(0, 10)
+      lastContact: appliedDate
     }),
-    applications: arrayUnion(code),
+    applications: arrayUnion(embeddedApp),
     appliedBefore: true
   }, { merge: true }).catch(() => null);
+
+  // Update users/{uid} with role:'candidate' and applications array so the admin's
+  // "users where role == 'candidate'" query also finds this user
+  await setDoc(doc(db, collections.users, uid), {
+    role: "candidate",
+    candidateCode,
+    code: candidateCode,
+    applications: arrayUnion(embeddedApp),
+    lastAppliedOpeningCode: code,
+    lastAppliedAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  }, { merge: true }).catch(() => null);
+
   await addDoc(collection(db, collections.activity), {
     candidateId: uid,
     type: "application_submitted",

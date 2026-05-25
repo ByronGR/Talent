@@ -1445,17 +1445,35 @@ function metricCard(label, value, iconName) {
   return `<article class="metric"><span>${icon(iconName)}</span><p>${label}</p><strong>${value}</strong></article>`;
 }
 
+function getLocalAppliedSet() {
+  try { return new Set(JSON.parse(localStorage.getItem("nw_talent_applied") || "[]")); } catch { return new Set(); }
+}
+
 function jobCard(job) {
   const role = normalizeRole(job);
-  const applied = new Set(state.applications.map((item) => item.jobId || item.openingCode)).has(role.code);
+  // Check Firestore-loaded applications first, then fall back to localStorage
+  // so the "Applied" state survives a page refresh even when Firestore reads fail.
+  const appliedFromServer = new Set(state.applications.map((item) => item.jobId || item.openingCode)).has(role.code);
+  const applied = appliedFromServer || getLocalAppliedSet().has(role.code);
   const matchedSkills = matchingSkillsForJob(role);
+  const openingUrl = `https://jobs.nearwork.co/apply?code=${encodeURIComponent(role.code)}`;
   return `
     <article class="job-card">
-      <div><div class="match-pill">${matchedSkills.length >= 3 ? `${matchedSkills.length} skill match` : `${role.match}% match`}</div><h3>${role.title}</h3><p>${role.orgName} · ${role.location}</p></div>
+      <div>
+        <div class="match-pill">${matchedSkills.length >= 3 ? `${matchedSkills.length} skill match` : `${role.match}% match`}</div>
+        <h3><a href="${openingUrl}" target="_blank" rel="noreferrer" style="color:inherit;text-decoration:none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${role.title}</a></h3>
+        <p>${role.orgName} · ${role.location}</p>
+      </div>
       <p class="job-description">${role.description}</p>
       <div class="skill-row">${role.skills.slice(0, 4).map((skill) => `<span>${skill}</span>`).join("")}</div>
       ${matchedSkills.length >= 3 ? `<p class="field-hint">Matched skills: ${matchedSkills.slice(0, 5).map(escapeHtml).join(", ")}</p>` : ""}
-      <div class="job-footer"><strong>${role.compensation}</strong><button class="secondary-action" type="button" data-apply="${role.code}" ${applied ? "disabled" : ""}>${applied ? "Applied" : "Apply"}</button></div>
+      <div class="job-footer">
+        <strong>${role.compensation}</strong>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <a href="${openingUrl}" target="_blank" rel="noreferrer" class="secondary-action" style="text-decoration:none;font-size:12px;opacity:0.75;">View opening ↗</a>
+          <button class="secondary-action" type="button" data-apply="${role.code}" ${applied ? "disabled" : ""}>${applied ? "Applied ✓" : "Apply"}</button>
+        </div>
+      </div>
     </article>
   `;
 }
@@ -1583,9 +1601,16 @@ function bindDashboardEvents() {
   document.querySelectorAll("[data-apply]").forEach((button) => {
     button.addEventListener("click", async () => {
       const job = state.jobs.map(normalizeRole).find((item) => item.code === button.dataset.apply);
+      const code = button.dataset.apply;
       button.disabled = true;
       button.textContent = "Submitted";
       if (state.user && hasFirebaseConfig) {
+        // Persist to localStorage immediately so refresh still shows Applied state
+        try {
+          const _set = getLocalAppliedSet();
+          _set.add(code);
+          localStorage.setItem("nw_talent_applied", JSON.stringify([..._set]));
+        } catch (_e) {}
         await applyToJob(state.user.uid, job);
         await loadDashboard(state.user);
         setActivePage("applications");
