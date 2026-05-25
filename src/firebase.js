@@ -257,16 +257,16 @@ async function signInWithGoogle() {
 
 async function listCandidateApplications(uid) {
   requireFirebase();
+  // Note: no orderBy here — avoids needing a composite Firestore index.
+  // We sort in-memory after collecting results.
   const byCandidateId = query(
     collection(db, collections.applications),
     where("candidateId", "==", uid),
-    orderBy("updatedAt", "desc"),
     limit(20)
   );
   const byOwnerUid = query(
     collection(db, collections.applications),
     where("ownerUid", "==", uid),
-    orderBy("updatedAt", "desc"),
     limit(20)
   );
   const snapshots = await Promise.allSettled([getDocs(byCandidateId), getDocs(byOwnerUid)]);
