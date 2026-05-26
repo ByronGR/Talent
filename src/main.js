@@ -514,7 +514,7 @@ function normalizeRole(job) {
     orgName: job.orgName || job.company || job.clientName || "Nearwork client",
     location: job.location || "Remote",
     compensation: job.compensation || job.salary || job.rate || "Competitive",
-    match: job.match || 82,
+    match: job.match || null,
     skills,
     description: job.description || job.about || "Nearwork is reviewing candidates for this role now."
   };
@@ -1460,9 +1460,9 @@ function jobCard(job) {
   return `
     <article class="job-card">
       <div>
-        <div class="match-pill">${matchedSkills.length >= 3 ? `${matchedSkills.length} skill match` : `${role.match}% match`}</div>
+        ${matchedSkills.length >= 3 ? `<div class="match-pill">${matchedSkills.length} skill match</div>` : role.match ? `<div class="match-pill">${role.match}% match</div>` : ''}
         <h3><a href="${openingUrl}" target="_blank" rel="noreferrer" style="color:inherit;text-decoration:none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${role.title}</a></h3>
-        <p>${role.orgName} · ${role.location}</p>
+        <p>${role.location}</p>
       </div>
       <p class="job-description">${role.description}</p>
       <div class="skill-row">${role.skills.slice(0, 4).map((skill) => `<span>${skill}</span>`).join("")}</div>
