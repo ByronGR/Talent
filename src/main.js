@@ -202,7 +202,8 @@ let state = {
   view: "login",
   activePage: "overview",
   matchesFiltered: false,
-  message: ""
+  message: "",
+  assessmentUiStep: null  // null | "techIntro" | "discIntro"
 };
 
 let notificationUnsubscribe = null;
@@ -274,7 +275,7 @@ function setState(patch) {
 function setActivePage(page, push = true) {
   const validPage = page === "onboarding" || navItems().some(([key]) => key === page);
   const nextPage = validPage ? page : "overview";
-  state = { ...state, activePage: nextPage, matchesFiltered: nextPage === "matches" ? state.matchesFiltered : false, message: "" };
+  state = { ...state, activePage: nextPage, matchesFiltered: nextPage === "matches" ? state.matchesFiltered : false, message: "", assessmentUiStep: null };
   if (push) {
     window.history.pushState({ page: nextPage }, "", nextPage === "overview" ? "/" : `/${nextPage}`);
   }
@@ -998,154 +999,254 @@ function renderApplications() {
 function renderAssessment() {
   const directId = assessmentIdFromPath();
   const assessments = state.assessments || [];
-  const assignedAssessments = assessments.filter((assessment) => ["sent", "started"].includes(String(assessment.status || "").toLowerCase()));
-  const completedAssessments = assessments.filter((assessment) => String(assessment.status || "").toLowerCase() === "completed");
+  const assignedAssessments = assessments.filter((a) => ["sent", "started"].includes(String(a.status || "").toLowerCase()));
+  const completedAssessments = assessments.filter((a) => String(a.status || "").toLowerCase() === "completed");
   const activeAssessment = directId
-    ? assessments.find((assessment) => assessment.id === directId)
+    ? assessments.find((a) => a.id === directId)
     : assignedAssessments[0] || completedAssessments[0] || null;
 
+  // Tech intro step
+  if (state.assessmentUiStep === "techIntro" && activeAssessment) {
+    return renderAssessmentTechIntro(activeAssessment);
+  }
+  // DISC intro step
+  if (state.assessmentUiStep === "discIntro" && activeAssessment) {
+    return renderAssessmentDiscIntro(activeAssessment);
+  }
+
+  // Error: direct link but no matching assessment
   if (directId && !activeAssessment) {
     return `
-      <section class="assessment-hero">
-        <div><p class="eyebrow">Assessment</p><h2>No assessment available for this link.</h2><p>Make sure you are logged into the same account that received the assessment email. If this keeps happening, contact Nearwork support.</p></div>
-        <button class="primary-action fit" data-page="recruiter" type="button">${icon("message-circle")} Contact support</button>
-      </section>
+      <div class="nw-assess-wrap nw-assess-state-page">
+        <div class="nw-assess-state-card">
+          <div class="nw-assess-state-icon" style="background:#FEF0F5;color:#CC3666">${icon("link-2-off")}</div>
+          <strong>This link isn't available</strong>
+          <p>Make sure you're logged into the same account that received the assessment email. If the problem persists, reach out to your Nearwork recruiter.</p>
+          <button class="primary-action fit" data-page="recruiter" type="button">${icon("message-circle")} Contact support</button>
+        </div>
+      </div>
     `;
   }
 
-  if (activeAssessment) {
-    const questions = Array.isArray(activeAssessment.questions) ? activeAssessment.questions : [];
-    const started = String(activeAssessment.status || "").toLowerCase() === "started";
-    const completed = String(activeAssessment.status || "").toLowerCase() === "completed";
-    const cancelled = String(activeAssessment.status || "").toLowerCase() === "cancelled";
-    const expired = isAssessmentExpired(activeAssessment);
-    const urlIndex = assessmentQuestionIndexFromPath();
-    const savedIndex = Number(activeAssessment.currentQuestionIndex || 0);
-    const currentIndex = Math.min(urlIndex ?? savedIndex, Math.max(questions.length - 1, 0));
-    const currentQuestion = questions[currentIndex];
-    const currentStage = currentQuestion?.stage || activeAssessment.currentStage || 1;
+  // Not assigned yet
+  if (!activeAssessment) {
     return `
-      <section class="assessment-hero">
-        <div>
-          <p class="eyebrow">Nearwork assessment</p>
-          <h2>${escapeAttr(activeAssessment.role || "Role assessment")}</h2>
-          <p>${completed ? "This assessment has been submitted." : cancelled ? "This assessment was cancelled by Nearwork. If a new one is assigned, it will appear here automatically." : expired ? "This assessment link has expired." : "This assessment has 2 stages. Stage 1 is technical, Stage 2 is DISC. You must be logged in to complete it."}</p>
+      <div class="nw-assess-wrap nw-assess-state-page">
+        <div class="nw-assess-state-card">
+          <div class="nw-assess-state-icon">${icon("inbox")}</div>
+          <strong>No assessment assigned yet</strong>
+          <p>Your assessment will appear here when Nearwork sends it. You'll receive an email notification when it's ready.</p>
+          <div class="nw-assess-info-row">
+            <div class="nw-assess-info-item">${icon("shield-check")}<span>One attempt</span></div>
+            <div class="nw-assess-info-item">${icon("timer")}<span>~45–90 min</span></div>
+            <div class="nw-assess-info-item">${icon("users")}<span>Recruiter reviewed</span></div>
+          </div>
         </div>
-        <button class="primary-action fit" id="startAssessment" type="button" ${completed || cancelled || expired ? "disabled" : ""}>${icon(started ? "play" : "clipboard-check")} ${started ? "Continue assessment" : "Start assessment"}</button>
-      </section>
-      ${started && !completed && !cancelled && !expired ? renderAssessmentTimer(activeAssessment, currentStage) : ""}
-      ${started && !completed && !cancelled && !expired ? renderAssessmentProgress(activeAssessment, currentIndex) : ""}
-      <section class="info-grid">
-        ${infoCard("Technical Assessment", "50 technical single-choice questions. 60 minutes.")}
-        ${infoCard("DISC Assessment", "20 work-style single-choice questions. 30 minutes.")}
-        ${infoCard("24-hour link", `Expires ${formatDate(activeAssessment.expiresAt || activeAssessment.deadline)}.`)}
-      </section>
-      <section class="section-block page-gap" id="assessmentWorkspace">
-        <div class="section-heading"><div><p class="eyebrow">${completed ? "Submitted" : assessmentStageName(currentStage)}</p><h2>${completed ? "Assessment received" : `${currentIndex + 1} of ${questions.length || 70}`}</h2></div></div>
-        ${completed ? renderAssessmentResult(activeAssessment) : cancelled ? emptyState("Assessment cancelled", "This assessment is no longer available. A new assigned assessment will appear here when your recruiter sends it.") : expired ? emptyState("Assessment expired", "This unique assessment link is no longer available. Contact Nearwork if you need help.") : renderAssessmentQuestions(activeAssessment, started, currentIndex)}
-      </section>
-      ${renderAssessmentHistory(assessments, activeAssessment.id)}
+      </div>
     `;
   }
+
+  // Active assessment
+  const questions = Array.isArray(activeAssessment.questions) ? activeAssessment.questions : [];
+  const started = String(activeAssessment.status || "").toLowerCase() === "started";
+  const completed = String(activeAssessment.status || "").toLowerCase() === "completed";
+  const cancelled = String(activeAssessment.status || "").toLowerCase() === "cancelled";
+  const expired = isAssessmentExpired(activeAssessment);
+  const urlIndex = assessmentQuestionIndexFromPath();
+  const savedIndex = Number(activeAssessment.currentQuestionIndex || 0);
+  const currentIndex = Math.min(urlIndex ?? savedIndex, Math.max(questions.length - 1, 0));
+  const currentQuestion = questions[currentIndex];
+  const currentStage = currentQuestion?.stage || activeAssessment.currentStage || 1;
+  const showChrome = started && !completed && !cancelled && !expired;
 
   return `
-    <section class="assessment-hero">
-      <div><p class="eyebrow">Assessment</p><h2>Complete role-specific questions when Nearwork assigns them.</h2><p>Your assessment will include English, work simulation, and role-specific scenarios. Results are reviewed by the Nearwork recruiting team.</p></div>
-      <button class="primary-action fit" type="button" disabled>${icon("lock")} Not assigned yet</button>
-    </section>
-    <section class="info-grid">${infoCard("One attempt", "Retakes are only opened by your recruiter when needed.")}${infoCard("Timed work", "Most role assessments take 45-90 minutes.")}${infoCard("Recruiter review", "You will get next steps or respectful feedback after review.")}</section>
+    <div class="nw-assess-wrap">
+      ${showChrome
+        ? renderAssessmentTimer(activeAssessment, currentStage, currentIndex, questions)
+        : renderAssessmentChromeSimple(activeAssessment)}
+      ${showChrome ? renderAssessmentProgress(activeAssessment, currentIndex) : ""}
+      <div class="nw-assess-body" id="assessmentWorkspace">
+        ${completed
+          ? renderAssessmentResult(activeAssessment)
+          : cancelled
+          ? `<div class="nw-assess-state-card nw-assess-state-card--inline"><div class="nw-assess-state-icon" style="background:#F5F4F0;color:#555">${icon("ban")}</div><strong>Assessment cancelled</strong><p>This assessment is no longer available. A new assigned assessment will appear here when your recruiter sends one.</p></div>`
+          : expired
+          ? `<div class="nw-assess-state-card nw-assess-state-card--inline"><div class="nw-assess-state-icon" style="background:#FEF0F5;color:#CC3666">${icon("clock-x")}</div><strong>Assessment link expired</strong><p>This unique assessment link is no longer valid. Contact your Nearwork recruiter if you need a new one.</p><button class="ghost-action" data-page="recruiter" type="button">${icon("message-circle")} Contact recruiter</button></div>`
+          : renderAssessmentQuestions(activeAssessment, started, currentIndex)}
+      </div>
+      ${renderAssessmentHistory(assessments, activeAssessment.id)}
+    </div>
+  `;
+}
+
+function renderAssessmentChromeSimple(assessment) {
+  const statusText = String(assessment.status || "").toLowerCase();
+  return `
+    <div class="nw-assess-chrome">
+      <div class="nw-assess-chrome__logo">
+        <div class="nw-assess-chrome__logotile">N</div>
+        <span class="nw-assess-chrome__brand">Nearwork</span>
+        <div class="nw-assess-chrome__divider"></div>
+        <span class="nw-assess-chrome__sub">Candidate assessment</span>
+      </div>
+      <div style="flex:1"></div>
+      ${!["completed", "cancelled"].includes(statusText) ? `<button class="nw-assess-chrome__exit" type="button">${icon("x")} Save &amp; exit</button>` : ""}
+    </div>
   `;
 }
 
 function renderAssessmentProgress(assessment, currentIndex) {
   const questions = (assessment.questions || []).slice(0, 70);
-  const technicalAnswered = stageQuestions(assessment, 1).filter((question) => isAnsweredValue(answerValueFor(assessment, question))).length;
-  const discAnswered = stageQuestions(assessment, 2).filter((question) => isAnsweredValue(answerValueFor(assessment, question))).length;
+  const technicalAnswered = stageQuestions(assessment, 1).filter((q) => isAnsweredValue(answerValueFor(assessment, q))).length;
+  const discAnswered = stageQuestions(assessment, 2).filter((q) => isAnsweredValue(answerValueFor(assessment, q))).length;
+  const stage1Count = stageQuestions(assessment, 1).length || 50;
+  const stage2Count = stageQuestions(assessment, 2).length || 20;
   return `
     <section class="assessment-progress-panel">
-      <div><strong>Technical Assessment</strong><span>${technicalAnswered}/50 answered</span></div>
-      <div><strong>DISC Assessment</strong><span>${discAnswered}/20 answered</span></div>
+      <div><strong>Technical</strong><span>${technicalAnswered}/${stage1Count} answered</span></div>
+      <div><strong>DISC</strong><span>${discAnswered}/${stage2Count} answered</span></div>
       <div class="assessment-progress-strip">
-        ${questions.map((question, index) => {
-          const answered = isAnsweredValue(answerValueFor(assessment, question));
-          return `<button type="button" class="${index === currentIndex ? "active" : ""} ${answered ? "answered" : ""}" data-assessment-jump="${index}" title="${assessmentStageName(question.stage)} question ${index + 1}">${index + 1}</button>`;
+        ${questions.map((q, index) => {
+          const answered = isAnsweredValue(answerValueFor(assessment, q));
+          return `<button type="button" class="${index === currentIndex ? "active" : ""} ${answered ? "answered" : ""}" data-assessment-jump="${index}" title="${assessmentStageName(q.stage)} · Q${index + 1}">${index + 1}</button>`;
         }).join("")}
       </div>
     </section>
   `;
 }
 
-function renderAssessmentTimer(assessment, currentStage) {
+function renderAssessmentTimer(assessment, currentStage, currentIndex, questions) {
   const stage = Number(currentStage || 1);
   const technicalStartedAt = dateFromValue(assessment.technicalStartedAt || assessment.startedAt) || new Date();
   const discStartedAt = dateFromValue(assessment.discStartedAt) || new Date();
   const stageStartedAt = stage === 1 ? technicalStartedAt : discStartedAt;
   const stageMinutes = stage === 1 ? Number(assessment.technicalMinutes || 60) : Number(assessment.discMinutes || 30);
   const endsAt = new Date(stageStartedAt.getTime() + stageMinutes * 60 * 1000);
+  const sectionLabel = stage === 1 ? "Technical" : "DISC profile";
+  const stageQs = (questions || []).filter((q) => Number(q.stage || 1) === stage);
+  const stageStart = (questions || []).findIndex((q) => Number(q.stage || 1) === stage);
+  const stageIdx = Math.max(0, currentIndex - stageStart);
+  const pct = stageQs.length ? Math.round(((stageIdx + 1) / stageQs.length) * 100) : 2;
   return `
-    <section class="assessment-timer-bar">
-      <div>
-        <span>${assessmentStageName(stage)} timer</span>
-        <strong id="assessmentTimer" data-end="${endsAt.toISOString()}">${stageMinutes}:00</strong>
+    <div class="nw-assess-chrome nw-assess-chrome--active">
+      <div class="nw-assess-chrome__logo">
+        <div class="nw-assess-chrome__logotile">N</div>
+        <span class="nw-assess-chrome__brand">Nearwork</span>
+        <div class="nw-assess-chrome__divider"></div>
+        <span class="nw-assess-chrome__sub">Candidate assessment</span>
       </div>
-      <p>${stage === 1 ? "Technical section: 60 minutes. DISC follows after Stage 1." : "DISC section: 30 minutes. Submit when you finish."}</p>
-    </section>
+      <div class="nw-assess-chrome__center">
+        <div class="nw-assess-chrome__section">
+          ${icon("clipboard-check")}
+          <span>${sectionLabel} &middot; Question ${stageIdx + 1} of ${stageQs.length || (stage === 1 ? 50 : 20)}</span>
+        </div>
+        <div class="nw-assess-chrome__progresstrack">
+          <div class="nw-assess-chrome__progressfill" style="width:${Math.max(2, pct)}%"></div>
+        </div>
+      </div>
+      <div class="nw-timer-pill">
+        ${icon("timer")}
+        <span id="assessmentTimer" data-end="${endsAt.toISOString()}">${stageMinutes}:00</span>
+      </div>
+      <button class="nw-assess-chrome__exit" type="button">${icon("x")} Save &amp; exit</button>
+    </div>
   `;
 }
 
 function renderAssessmentQuestions(assessment, started, displayIndex = null) {
+  // ── Welcome screen (not yet started) ────────────────────────────────────
   if (!started) {
+    const role = escapeAttr(assessment.role || "Role assessment");
+    const recruiter = escapeAttr(assessment.recruiterName || assessment.recruiter || "Nearwork");
+    const expiry = formatDate(assessment.expiresAt || assessment.deadline);
+    const stage1Q = stageQuestions(assessment, 1).length || 50;
+    const stage2Q = stageQuestions(assessment, 2).length || 20;
+    const stage1Min = Number(assessment.technicalMinutes || 60);
+    const stage2Min = Number(assessment.discMinutes || 30);
     return `
-      <div class="assessment-preview">
-        <div>
-          ${icon("timer")}
-          <strong>Before you start</strong>
-          <p>Choose a quiet room, close extra tabs, keep your phone away unless needed for login, and make sure your internet connection is stable. The timer starts when you begin.</p>
+      <div class="nw-assess-welcome">
+        <div class="nw-assess-welcome__header">
+          <span class="nw-assess-role-chip">${icon("sparkles")} ${role}</span>
+          <span>Sent by ${recruiter}${expiry ? " &middot; expires " + expiry : ""}</span>
         </div>
-        <ul>
-          <li>Technical Assessment: 50 single-choice questions.</li>
-          <li>DISC Assessment: 20 work-style single-choice questions.</li>
-          <li>Your progress saves after every answer, and refresh will return to the current question.</li>
-        </ul>
+        <h2 class="nw-assess-welcome__title">Let's see how you think — and how you work.</h2>
+        <p class="nw-assess-welcome__desc">This assessment has two parts: a role-knowledge check and a behavioral profile.</p>
+        <div class="nw-assess-parts">
+          <div class="nw-assess-part">
+            <div class="nw-assess-part__blob" style="background:#E8F8F5"></div>
+            <div class="nw-assess-part__icon" style="background:#E8F8F5;color:#16A085">${icon("code-2")}</div>
+            <span class="nw-assess-part__tag" style="color:#16A085">Part 1</span>
+            <strong class="nw-assess-part__title">Technical Assessment</strong>
+            <span class="nw-assess-part__sub">${stage1Q} questions &middot; ~${stage1Min} min</span>
+            <p class="nw-assess-part__desc">Single-choice role scenarios. We're looking at how you think, not whether you remember definitions.</p>
+          </div>
+          <div class="nw-assess-part">
+            <div class="nw-assess-part__blob" style="background:#F7F2FC"></div>
+            <div class="nw-assess-part__icon" style="background:#F7F2FC;color:#AF7AC5">${icon("compass")}</div>
+            <span class="nw-assess-part__tag" style="color:#AF7AC5">Part 2</span>
+            <strong class="nw-assess-part__title">DISC Profile</strong>
+            <span class="nw-assess-part__sub">${stage2Q} statements &middot; ~${stage2Min} min</span>
+            <p class="nw-assess-part__desc">How you work, communicate, and lead under pressure. No right or wrong answers.</p>
+          </div>
+        </div>
+        <div class="nw-assess-rules">
+          <div class="nw-assess-rule"><div class="nw-assess-rule__icon">${icon("wifi")}</div><div><strong>Stable connection</strong><span>Progress saves on every answer.</span></div></div>
+          <div class="nw-assess-rule"><div class="nw-assess-rule__icon">${icon("timer")}</div><div><strong>Timed sections</strong><span>A countdown runs per stage.</span></div></div>
+          <div class="nw-assess-rule"><div class="nw-assess-rule__icon">${icon("lock")}</div><div><strong>One attempt</strong><span>Take it when you can give it your full focus.</span></div></div>
+          <div class="nw-assess-rule"><div class="nw-assess-rule__icon">${icon("eye-off")}</div><div><strong>No proctoring</strong><span>No camera or screen recording.</span></div></div>
+        </div>
+        <div class="nw-assess-welcome__cta">
+          <button class="primary-action" id="showTechIntro" type="button">${icon("arrow-right")} Begin assessment</button>
+          <span>Questions are timed. Open when you're ready to focus.</span>
+        </div>
       </div>
     `;
   }
+
+  // ── Active question ──────────────────────────────────────────────────────
   const questions = (assessment.questions || []).slice(0, 70);
   const currentIndex = Math.min(displayIndex ?? Number(assessment.currentQuestionIndex || 0), Math.max(questions.length - 1, 0));
   const question = questions[currentIndex];
   const saved = assessment.answers?.[question.id]?.value ?? assessment.answers?.[question.id] ?? "";
   const options = Array.isArray(question.options) && question.options.length ? question.options : ["Strongly agree", "Agree", "Neutral", "Disagree"];
-  const nextStage = questions[currentIndex + 1]?.stage;
+  const nextQuestion = questions[currentIndex + 1];
+  const nextStage = nextQuestion?.stage;
   const finishesStage = nextStage && nextStage !== question.stage;
   const stageMissed = missedQuestionsForStage(assessment, question.stage);
   const shouldReviewStage = finishesStage && stageMissed.length;
   const finishingAssessment = currentIndex + 1 >= questions.length;
   const finalMissed = finishingAssessment ? missedQuestionsForStage(assessment, question.stage) : [];
-  const answerType = question.multiple ? "Multiple choice" : "Single choice";
+  const isMulti = !!question.multiple;
+  const chipVariant = Number(question.stage || 1) === 2 ? "nw-assess-chip--violet" : "nw-assess-chip--teal";
+  const typeLabel = isMulti ? "Multi-select" : "Single choice";
+  const partLabel = escapeAttr(question.part || question.type || (Number(question.stage || 1) === 2 ? "DISC" : "Scenario"));
+  const bankLabel = escapeAttr(question.bank || "");
   return `
-    <form id="assessmentQuestionForm" class="assessment-question-card" data-current-index="${currentIndex}">
-      <div class="assessment-question-meta">
-        <span>${escapeAttr(question.part || question.type)}</span>
-        <span>${escapeAttr(question.bank || "")}</span>
-        <span>${answerType}</span>
+    <form id="assessmentQuestionForm" class="nw-assess-qcard" data-current-index="${currentIndex}">
+      <div class="nw-assess-qmeta">
+        <span class="nw-assess-chip ${chipVariant}">${partLabel}</span>
+        ${bankLabel ? `<span class="nw-assess-chip nw-assess-chip--gray">${bankLabel}</span>` : ""}
+        <span class="nw-assess-qtype">&middot; ${typeLabel}</span>
       </div>
-      ${Number(question.stage || 1) === 2 && currentIndex === questions.findIndex((item) => Number(item.stage || 1) === 2) ? `<div class="assessment-stage-divider"><strong>DISC Assessment</strong><span>You finished the Technical Assessment. Continue with the work-style section.</span></div>` : ""}
-      <div class="question-prompt">${escapeAttr(question.q || "")}</div>
-      <fieldset class="assessment-options">
-        <legend>${answerType}</legend>
-          ${options.map((option, optionIndex) => `
-            <label class="assessment-option">
-              <input type="radio" name="answer" value="${optionIndex}" ${String(saved) === String(optionIndex) ? "checked" : ""} />
-              <b>${String.fromCharCode(65 + optionIndex)}</b>
-              <span>${escapeAttr(option)}</span>
-            </label>
-          `).join("")}
+      ${question.context ? `<div class="nw-assess-context"><strong>Context: </strong>${escapeAttr(question.context)}</div>` : ""}
+      <p class="nw-assess-qprompt">${escapeAttr(question.q || "")}</p>
+      <fieldset class="nw-assess-options${isMulti ? " nw-assess-options--multi" : ""}">
+        <legend>${typeLabel}</legend>
+        ${options.map((opt, i) => `
+          <label class="nw-assess-option${isMulti ? " nw-assess-option--multi" : ""}">
+            <input type="radio" name="answer" value="${i}" ${String(saved) === String(i) ? "checked" : ""} />
+            <span class="nw-assess-option__key">${String.fromCharCode(65 + i)}</span>
+            <span class="nw-assess-option__text">${escapeAttr(opt)}</span>
+            ${!isMulti ? `<span class="nw-assess-option__check">${icon("check-circle-2")}</span>` : ""}
+          </label>
+        `).join("")}
       </fieldset>
       ${shouldReviewStage || finalMissed.length ? renderMissedQuestionPrompt(assessment, shouldReviewStage ? stageMissed : finalMissed, question.stage) : ""}
-      <p class="field-hint">${finishesStage ? "After this answer, you will finish the Technical Assessment and enter the DISC Assessment." : "Your progress saves after every question. If you refresh, you will return here."}</p>
-      <div class="job-footer">
-        <button class="ghost-action" id="prevAssessmentQuestion" type="button" ${currentIndex === 0 ? "disabled" : ""}>${icon("arrow-left")} Previous</button>
-        <button class="primary-action fit" type="submit">${currentIndex + 1 >= questions.length ? "Submit assessment" : "Next"}</button>
+      <div class="nw-assess-qfooter">
+        <button class="ghost-action" id="prevAssessmentQuestion" type="button" ${currentIndex === 0 ? "disabled" : ""}>${icon("arrow-left")} Back</button>
+        <span class="nw-assess-autosave">${icon("check")} Auto-saved</span>
+        <div style="flex:1"></div>
+        <button class="primary-action fit" type="submit">${finishingAssessment ? icon("send") + " Submit assessment" : "Next " + icon("arrow-right")}</button>
       </div>
     </form>
   `;
@@ -1155,12 +1256,12 @@ function renderMissedQuestionPrompt(assessment, missed, stage) {
   if (!missed.length) return "";
   const questions = (assessment.questions || []).slice(0, 70);
   return `
-    <div class="missed-question-prompt">
-      <strong>You still have unanswered questions in the ${assessmentStageName(stage)}.</strong>
-      <p>You missed ${missed.map((question) => `Question ${questions.findIndex((item) => item.id === question.id) + 1}`).join(", ")}. You can go back now or continue if you meant to leave them unanswered.</p>
-      <div>${missed.map((question) => {
-        const index = questions.findIndex((item) => item.id === question.id);
-        return `<button class="ghost-action" type="button" data-assessment-jump="${index}">Go to ${index + 1}</button>`;
+    <div class="nw-assess-missed">
+      <strong>${icon("alert-triangle")} Unanswered questions in ${assessmentStageName(stage)}</strong>
+      <p>You skipped ${missed.map((q) => `Question ${questions.findIndex((item) => item.id === q.id) + 1}`).join(", ")}. You can go back now or continue if you meant to leave them blank.</p>
+      <div class="nw-assess-missed__links">${missed.map((q) => {
+        const idx = questions.findIndex((item) => item.id === q.id);
+        return `<button class="ghost-action" type="button" data-assessment-jump="${idx}">${icon("arrow-left")} Go to ${idx + 1}</button>`;
       }).join("")}</div>
     </div>
   `;
@@ -1171,9 +1272,130 @@ function isAssessmentExpired(assessment) {
   return Date.now() > new Date(assessment.expiresAt).getTime();
 }
 
-function renderAssessmentResult(assessment) {
+function renderAssessmentTechIntro(assessment) {
+  const role = escapeAttr(assessment.role || "Role assessment");
+  const stage1Q = stageQuestions(assessment, 1).length || 50;
+  const stage1Min = Number(assessment.technicalMinutes || 60);
   return `
-    ${emptyState("Thank you for completing your assessment", "This has been shared successfully with the Nearwork team. We will review it and reach out with next steps.")}
+    <div class="nw-assess-wrap">
+      ${renderAssessmentChromeSimple(assessment)}
+      <div class="nw-assess-body">
+        <div class="nw-assess-welcome" style="max-width:860px">
+          <div style="display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:#E8F8F5;border:1px solid rgba(22,160,133,0.25);margin-bottom:4px">
+            <span style="width:6px;height:6px;border-radius:50%;background:#16A085;display:inline-block"></span>
+            <span style="font-size:11.5px;font-weight:600;color:#0E6B58;text-transform:uppercase;letter-spacing:0.05em">Part 1 of 2 &middot; Starting now</span>
+          </div>
+          <h2 class="nw-assess-welcome__title" style="font-size:2.2rem">Role knowledge check.</h2>
+          <p class="nw-assess-welcome__desc">The next <strong>${stage1Q} questions</strong> are about the day-to-day of the ${role} role — scenarios, decisions, and judgement calls. We're looking at how you think, not whether you remember definitions.</p>
+          <p style="font-size:0.88rem;color:#9E9E9E;margin:0">You have <strong style="color:#555">${stage1Min} minutes</strong> total. Your progress saves automatically after every question. DISC follows when you finish.</p>
+          <div class="nw-assess-welcome__cta" style="margin-top:8px">
+            <button class="primary-action" id="startAssessment" type="button">${icon("play")} Start Part 1</button>
+            <button class="ghost-action" id="backToWelcome" type="button">${icon("arrow-left")} Back</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderAssessmentDiscIntro(assessment) {
+  const stage1Q = stageQuestions(assessment, 1).length || 50;
+  const stage2Q = stageQuestions(assessment, 2).length || 20;
+  const stage2Min = Number(assessment.discMinutes || 30);
+  const recruiter = escapeAttr(assessment.recruiterName || assessment.recruiter || "your recruiter");
+  const discIntroIdx = (assessment.questions || []).findIndex((q) => Number(q.stage || 1) === 2);
+  return `
+    <div class="nw-assess-wrap">
+      ${renderAssessmentChromeSimple(assessment)}
+      <div class="nw-assess-body">
+        <div style="background:#E8F8F5;border-bottom:1px solid rgba(22,160,133,0.15);padding:13px 20px;display:flex;align-items:center;gap:12px;margin-bottom:24px;border-radius:10px">
+          <div style="width:26px;height:26px;border-radius:50%;background:#16A085;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">${icon("check")}</div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600;color:#0E6B58">Part 1 complete — nice work.</div>
+            <div style="font-size:12px;color:#12866E;margin-top:1px">${stage1Q}/${stage1Q} answered &middot; submitted to ${recruiter} for review</div>
+          </div>
+          <span class="nw-assess-chip nw-assess-chip--teal">${icon("trophy")} Part 1 done</span>
+        </div>
+        <div class="nw-assess-welcome" style="max-width:860px">
+          <div style="display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:#F7F2FC;border:1px solid rgba(175,122,197,0.25);margin-bottom:4px">
+            <span style="width:6px;height:6px;border-radius:50%;background:#AF7AC5;display:inline-block"></span>
+            <span style="font-size:11.5px;font-weight:600;color:#784899;text-transform:uppercase;letter-spacing:0.05em">Part 2 of 2 &middot; Up next</span>
+          </div>
+          <h2 class="nw-assess-welcome__title" style="font-size:2.2rem">Now, the DISC profile.</h2>
+          <p class="nw-assess-welcome__desc"><strong>DISC</strong> is a behavioral framework. It tells your future team how you tend to communicate, decide, and respond to pressure — not whether you're "good" at the job.</p>
+          <div class="nw-assess-parts" style="grid-template-columns:1fr">
+            <div class="nw-assess-part" style="background:#F8F7F3;border-left:3px solid #AF7AC5">
+              <strong style="font-size:0.88rem;font-weight:600;color:#555;margin-bottom:8px;display:block">How it works</strong>
+              <p class="nw-assess-part__desc">You'll see ${stage2Q} statements about how you work. For each one, pick the option that's most like you. Go with your gut — there are no right answers. Takes about ${stage2Min} minutes.</p>
+            </div>
+          </div>
+          <div class="nw-assess-rules">
+            <div class="nw-assess-rule"><div class="nw-assess-rule__icon" style="color:#AF7AC5">${icon("users-round")}</div><div><strong>No right answers</strong><span>This measures style, not performance.</span></div></div>
+            <div class="nw-assess-rule"><div class="nw-assess-rule__icon" style="color:#AF7AC5">${icon("timer")}</div><div><strong>${stage2Min} min total</strong><span>Go with your first instinct.</span></div></div>
+            <div class="nw-assess-rule"><div class="nw-assess-rule__icon" style="color:#AF7AC5">${icon("shield-check")}</div><div><strong>Used for fit</strong><span>Helps match you with the right team.</span></div></div>
+            <div class="nw-assess-rule"><div class="nw-assess-rule__icon" style="color:#AF7AC5">${icon("check")}</div><div><strong>Auto-saved</strong><span>Progress saves on every answer.</span></div></div>
+          </div>
+          <div class="nw-assess-welcome__cta" style="margin-top:8px">
+            <button class="primary-action" id="startDiscAssessment" data-disc-index="${discIntroIdx >= 0 ? discIntroIdx : 50}" type="button">${icon("play")} Start Part 2</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderAssessmentResult(assessment) {
+  const candidateName = state.candidate?.name || state.user?.displayName || "";
+  const firstName = candidateName.split(" ")[0] || "You";
+  const recruiter = escapeAttr(assessment.recruiterName || assessment.recruiter || "your recruiter");
+  const stage1Q = stageQuestions(assessment, 1).length || 50;
+  const stage2Q = stageQuestions(assessment, 2).length || 20;
+  return `
+    <div class="nw-assess-complete">
+      <div class="nw-assess-complete__hero">
+        <div class="nw-assess-complete__icon">
+          ${icon("check")}
+          <div class="nw-assess-complete__ring1"></div>
+          <div class="nw-assess-complete__ring2"></div>
+        </div>
+        <h2 class="nw-assess-complete__title">You're done, ${escapeAttr(firstName)}.</h2>
+        <p class="nw-assess-complete__desc">Your results have been sent to ${recruiter}. They'll reach out personally — usually within a business day.</p>
+      </div>
+      <div class="nw-assess-complete__chips">
+        <span class="nw-assess-complete__chip nw-assess-complete__chip--teal">${icon("clipboard-check")} Part 1 &middot; ${stage1Q}/${stage1Q} answered</span>
+        <span class="nw-assess-complete__chip nw-assess-complete__chip--violet">${icon("compass")} Part 2 &middot; ${stage2Q}/${stage2Q} answered</span>
+        <span class="nw-assess-complete__chip nw-assess-complete__chip--gray">${icon("check-circle-2")} Assessment complete</span>
+      </div>
+      <div class="nw-assess-next">
+        <div class="nw-assess-next__label">What happens next</div>
+        ${[
+          { icon: "inbox", title: "Your recruiter reviews your results", desc: `${recruiter} will read your scenarios and DISC profile, usually within one business day.`, when: "Within 24h" },
+          { icon: "message-square", title: `A personal note from ${recruiter}`, desc: "Not an automated email. They'll share what stood out and what comes next.", when: "Tomorrow" },
+          { icon: "calendar-check", title: "Interview with the hiring team", desc: "If there's a match, you'll get a calendar link to book a slot that works for you.", when: "This week" },
+        ].map(({ icon: ic, title, desc, when }, i) => `
+          <div class="nw-assess-next__item">
+            <div class="nw-assess-next__icon-wrap">
+              <div class="nw-assess-next__iconbox">${icon(ic)}</div>
+              <div class="nw-assess-next__num">${i + 1}</div>
+            </div>
+            <div class="nw-assess-next__body">
+              <div class="nw-assess-next__title">${title}</div>
+              <div class="nw-assess-next__desc">${desc}</div>
+            </div>
+            <div class="nw-assess-next__when">${when}</div>
+          </div>
+        `).join("")}
+      </div>
+      <div class="nw-assess-recruiter">
+        <div class="nw-assess-recruiter__avatar">${(assessment.recruiterName || assessment.recruiter || "NW").split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}</div>
+        <div style="flex:1">
+          <div class="nw-assess-recruiter__label">Your recruiter</div>
+          <div class="nw-assess-recruiter__name">${recruiter}</div>
+          <div class="nw-assess-recruiter__role">Talent partner &middot; Nearwork</div>
+        </div>
+        <button class="ghost-action" data-page="recruiter" type="button">${icon("message-circle")} Message recruiter</button>
+      </div>
+    </div>
   `;
 }
 
@@ -1619,6 +1841,43 @@ function bindDashboardEvents() {
       }
     });
   });
+  // Welcome → Tech intro
+  document.querySelector("#showTechIntro")?.addEventListener("click", () => {
+    setState({ assessmentUiStep: "techIntro", message: "" });
+  });
+
+  // Tech intro → back to welcome
+  document.querySelector("#backToWelcome")?.addEventListener("click", () => {
+    setState({ assessmentUiStep: null, message: "" });
+  });
+
+  // DISC intro → start Part 2
+  document.querySelector("#startDiscAssessment")?.addEventListener("click", async () => {
+    const assessmentId = assessmentIdFromPath() || (state.assessments || [])[0]?.id;
+    const assessment = (state.assessments || []).find((item) => item.id === assessmentId);
+    if (!assessmentId || !assessment) return;
+    const questions = assessment.questions || [];
+    const discBtn = document.querySelector("#startDiscAssessment");
+    const discIndex = discBtn ? Number(discBtn.dataset.discIndex || 50) : questions.findIndex((q) => Number(q.stage || 1) === 2);
+    const safeIndex = discIndex >= 0 ? discIndex : 50;
+    const discStartedAt = new Date().toISOString();
+    try {
+      await saveAssessmentAnswer(assessmentId, "__progress__", "", {
+        currentQuestionIndex: safeIndex,
+        totalQuestions: questions.length,
+        currentStage: 2,
+        discStartedAt
+      });
+      setAssessmentQuestionUrl(assessmentId, safeIndex);
+      const updatedAssessments = (state.assessments || []).map((item) => item.id === assessmentId
+        ? { ...item, currentQuestionIndex: safeIndex, currentStage: 2, discStartedAt }
+        : item);
+      setState({ assessments: updatedAssessments, activePage: "assessment", assessmentUiStep: null, message: "" });
+    } catch (error) {
+      setState({ message: friendlyAuthError(error) });
+    }
+  });
+
   document.querySelector("#startAssessment")?.addEventListener("click", async () => {
     const assessmentId = assessmentIdFromPath() || (state.assessments || [])[0]?.id;
     const assessment = (state.assessments || []).find((item) => item.id === assessmentId) || (state.assessments || [])[0];
@@ -1632,7 +1891,7 @@ function bindDashboardEvents() {
       const updatedAssessments = (state.assessments || []).map((item) => item.id === assessmentId
         ? { ...item, status: "started", startedAt: item.startedAt || new Date().toISOString(), technicalStartedAt: item.technicalStartedAt || new Date().toISOString() }
         : item);
-      setState({ assessments: updatedAssessments, activePage: "assessment", message: "" });
+      setState({ assessments: updatedAssessments, activePage: "assessment", assessmentUiStep: null, message: "" });
     } catch (error) {
       setState({ message: friendlyAuthError(error) });
     }
@@ -1708,18 +1967,17 @@ function bindDashboardEvents() {
         setState({ assessments: completedAssessments, activePage: "assessment", message: "" });
       } else {
         const enteringDisc = question.stage === 1 && nextQuestion?.stage === 2 && !assessment.discStartedAt;
-        const discStartedAt = enteringDisc ? new Date().toISOString() : assessment.discStartedAt;
         await saveAssessmentAnswer(assessmentId, question.id, answers[question.id], {
           currentQuestionIndex: currentIndex + 1,
           totalQuestions: questions.length,
           currentStage: nextQuestion?.stage || question.stage || 1,
-          discStartedAt: enteringDisc ? discStartedAt : undefined
         });
         setAssessmentQuestionUrl(assessmentId, currentIndex + 1);
         const updatedAssessments = (state.assessments || []).map((item) => item.id === assessmentId
-          ? { ...item, answers, currentQuestionIndex: currentIndex + 1, currentStage: nextQuestion?.stage || question.stage || 1, discStartedAt, progress: `${currentIndex + 1}/${questions.length}` }
+          ? { ...item, answers, currentQuestionIndex: currentIndex + 1, currentStage: nextQuestion?.stage || question.stage || 1, progress: `${currentIndex + 1}/${questions.length}` }
           : item);
-        setState({ assessments: updatedAssessments, activePage: "assessment", message: "" });
+        // Show DISC intro screen before the first DISC question
+        setState({ assessments: updatedAssessments, activePage: "assessment", message: "", assessmentUiStep: enteringDisc ? "discIntro" : null });
       }
     } catch (error) {
       setState({ message: friendlyAuthError(error) });
