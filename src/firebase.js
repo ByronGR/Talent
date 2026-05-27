@@ -28,6 +28,7 @@ import {
   where
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import {
+  deleteObject,
   getDownloadURL,
   getStorage,
   ref,
@@ -545,6 +546,13 @@ async function uploadCandidatePhoto(uid, file) {
 
 async function uploadCandidateCv(uid, file, label) {
   requireFirebase();
+  // Read current activeCvId so we can delete the old file after the new one is uploaded
+  let oldCvPath = null;
+  try {
+    const currentDoc = await getDoc(doc(db, collections.users, uid));
+    if (currentDoc.exists()) oldCvPath = currentDoc.data().activeCvId || null;
+  } catch { /* ignore */ }
+
   const safeName = file.name.replace(/[^a-z0-9._-]/gi, "-").toLowerCase();
   const path = `candidate-cvs/${uid}/${Date.now()}-${safeName}`;
   const fileRef = ref(storage, path);
@@ -565,6 +573,14 @@ async function uploadCandidateCv(uid, file, label) {
     activeCvName: cv.name || cv.fileName,
     updatedAt: serverTimestamp()
   }, { merge: true });
+
+  // Delete the old CV file from Storage (non-blocking)
+  if (oldCvPath && oldCvPath !== path) {
+    deleteObject(ref(storage, oldCvPath)).catch(() => {
+      // Ignore errors (file may already be deleted or path invalid)
+    });
+  }
+
   return cv;
 }
 
