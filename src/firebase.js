@@ -174,7 +174,10 @@ async function upsertCandidate(uid, data) {
   await setDoc(doc(db, collections.users, uid), payload, { merge: true });
   // Mirror to ATS candidates collection so every account appears in Admin immediately
   await setDoc(doc(db, collections.candidates, candidateCode), toAtsCandidate(uid, { ...payload, candidateCode }), { merge: true }).catch(() => null);
-  syncCandidateToHubSpot({ ...payload, candidateCode, source: "talent.nearwork.co" }).catch(() => null);
+  // Only sync to HubSpot if the candidate gave marketing consent
+  if (data.marketingConsent === true) {
+    syncCandidateToHubSpot({ ...payload, candidateCode, source: "talent.nearwork.co" }).catch(() => null);
+  }
 }
 
 function candidateCodeForUid(uid) {
@@ -239,24 +242,34 @@ function toAtsCandidate(uid, data) {
   };
 }
 
-async function signInWithGoogle() {
+async function signInWithGoogle(marketingConsent = false) {
   requireFirebase();
   const result = await signInWithPopup(auth, googleProvider);
   const profile = await getCandidateForAuthUser(result.user);
+  const consentAt = new Date().toISOString();
   const basicData = {
     email: result.user.email,
     name: result.user.displayName || "",
     availability: "open",
-    onboarded: false
+    onboarded: false,
+    privacyConsent: true,
+    privacyConsentAt: consentAt,
+    marketingConsent: marketingConsent,
+    marketingConsentAt: marketingConsent ? consentAt : null
   };
-  if (!profile) {
+  const isNewAccount = !profile;
+  if (isNewAccount) {
     await upsertCandidate(result.user.uid, basicData);
     sendCandidateAccountCreatedEmail(basicData).catch(() => null);
   }
   const candidateCode = candidateCodeForUid(result.user.uid);
   const merged = { ...(profile || basicData), candidateCode };
   await setDoc(doc(db, collections.candidates, candidateCode), toAtsCandidate(result.user.uid, merged), { merge: true }).catch(() => null);
-  syncCandidateToHubSpot({ ...merged, candidateCode, source: "talent.nearwork.co" }).catch(() => null);
+  // Sync to HubSpot only for new accounts with marketing consent, or existing accounts that previously consented
+  const effectiveConsent = isNewAccount ? marketingConsent : (profile?.marketingConsent === true);
+  if (effectiveConsent) {
+    syncCandidateToHubSpot({ ...merged, candidateCode, source: "talent.nearwork.co" }).catch(() => null);
+  }
   return result.user;
 }
 
@@ -513,7 +526,9 @@ async function updateCandidateProfile(uid, data) {
       ...data,
       candidateCode
     }), { merge: true });
-    syncCandidateToHubSpot({ ...data, candidateCode, source: "talent.nearwork.co" }).catch(() => null);
+    if (data.marketingConsent === true) {
+      syncCandidateToHubSpot({ ...data, candidateCode, source: "talent.nearwork.co" }).catch(() => null);
+    }
     return { candidateCode, atsSynced: true };
   } catch (error) {
     console.warn("Candidate ATS sync failed.", error);

@@ -593,6 +593,18 @@ function renderLogin(mode = "login") {
         ${isSignup ? `<label>Full name<input name="name" type="text" autocomplete="name" placeholder="Full name" required /></label>` : ""}
         <label>Email<input name="email" type="email" autocomplete="email" placeholder="you@example.com" required /></label>
         <label>Password<input name="password" type="password" autocomplete="${isSignup ? "new-password" : "current-password"}" minlength="6" placeholder="••••••••" required /></label>
+        ${isSignup ? `
+        <div id="consentBlock" style="margin:2px 0 4px;">
+          <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:#2d2d2d;line-height:1.5;margin-bottom:3px;">
+            <input type="checkbox" name="privacyConsent" id="privacyConsent" style="margin-top:3px;flex-shrink:0;accent-color:#16a085;">
+            <span>I have read and agree to Nearwork's <a href="https://nearwork.co/privacy" target="_blank" rel="noopener" style="color:#16a085;text-decoration:underline;">Privacy Policy</a> and <a href="https://nearwork.co/terms" target="_blank" rel="noopener" style="color:#16a085;text-decoration:underline;">Terms of Service</a> *</span>
+          </label>
+          <p id="privacyConsentError" style="display:none;font-size:12px;color:#c0392b;margin:2px 0 6px 27px;">You must accept the Privacy Policy to continue</p>
+          <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;margin-top:10px;font-size:13px;color:#555;line-height:1.5;">
+            <input type="checkbox" name="marketingConsent" id="marketingConsent" style="margin-top:3px;flex-shrink:0;accent-color:#16a085;">
+            <span>I agree to receive future job opportunities and updates from Nearwork (optional)</span>
+          </label>
+        </div>` : ""}
         <button class="primary-action" type="submit">${icon(isSignup ? "user-plus" : "log-in")} ${isSignup ? "Create account" : "Sign in"}</button>
         <p id="formMessage" class="form-message" role="status"></p>
       </form>
@@ -605,8 +617,20 @@ function renderLogin(mode = "login") {
   document.querySelector("#googleSignIn").addEventListener("click", async () => {
     const message = document.querySelector("#formMessage");
     message.textContent = "";
+    if (isSignup) {
+      const privacyBox = document.querySelector("#privacyConsent");
+      const privacyError = document.querySelector("#privacyConsentError");
+      if (privacyBox && !privacyBox.checked) {
+        if (privacyError) privacyError.style.display = "";
+        message.textContent = "Please accept the Privacy Policy to continue.";
+        privacyBox.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+      if (privacyError) privacyError.style.display = "none";
+    }
+    const marketingConsent = isSignup ? (document.querySelector("#marketingConsent")?.checked === true) : false;
     try {
-      await signInWithGoogle();
+      await signInWithGoogle(marketingConsent);
     } catch (error) {
       message.textContent = friendlyAuthError(error);
     }
@@ -631,6 +655,18 @@ function renderLogin(mode = "login") {
     const message = document.querySelector("#formMessage");
     const email = String(form.get("email")).trim().toLowerCase();
     message.textContent = "";
+    if (isSignup) {
+      const privacyBox = document.querySelector("#privacyConsent");
+      const privacyError = document.querySelector("#privacyConsentError");
+      if (privacyBox && !privacyBox.checked) {
+        if (privacyError) privacyError.style.display = "";
+        message.textContent = "Please accept the Privacy Policy to continue.";
+        return;
+      }
+      if (privacyError) privacyError.style.display = "none";
+    }
+    const marketingConsent = isSignup ? (document.querySelector("#marketingConsent")?.checked === true) : false;
+    const consentAt = new Date().toISOString();
     try {
       if (isSignup) {
         const credential = await createUserWithEmailAndPassword(auth, email, form.get("password"));
@@ -642,7 +678,11 @@ function renderLogin(mode = "login") {
           availability: "open",
           headline: "Nearwork candidate",
           onboarded: false,
-          source: "talent.nearwork.co"
+          source: "talent.nearwork.co",
+          privacyConsent: true,
+          privacyConsentAt: consentAt,
+          marketingConsent,
+          marketingConsentAt: marketingConsent ? consentAt : null
         });
         sendCandidateAccountCreatedEmail({
           name: form.get("name"),
@@ -2050,6 +2090,8 @@ function bindDashboardEvents() {
       const enrichedData = {
         ...data,
         photoURL,
+        // Forward stored marketing consent so HubSpot sync remains gated correctly
+        marketingConsent: state.candidate?.marketingConsent === true,
         ...(cv ? {
           activeCvId: cv.id,
           activeCvName: cv.name || cv.fileName,
