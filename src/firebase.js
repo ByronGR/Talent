@@ -164,13 +164,17 @@ async function getCandidateForAuthUser(user) {
 
 async function upsertCandidate(uid, data) {
   requireFirebase();
+  const candidateCode = data.candidateCode || candidateCodeForUid(uid);
   const payload = {
     ...data,
+    candidateCode,
     role: "candidate",
     updatedAt: serverTimestamp()
   };
   await setDoc(doc(db, collections.users, uid), payload, { merge: true });
-  syncCandidateToHubSpot({ ...payload, candidateCode: data.candidateCode || candidateCodeForUid(uid), source: "talent.nearwork.co" }).catch(() => null);
+  // Mirror to ATS candidates collection so every account appears in Admin immediately
+  await setDoc(doc(db, collections.candidates, candidateCode), toAtsCandidate(uid, { ...payload, candidateCode }), { merge: true }).catch(() => null);
+  syncCandidateToHubSpot({ ...payload, candidateCode, source: "talent.nearwork.co" }).catch(() => null);
 }
 
 function candidateCodeForUid(uid) {
