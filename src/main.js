@@ -783,6 +783,7 @@ function renderDashboard() {
           ${navItems().map(([key, iconName, label]) => `
             <button class="${state.activePage === key ? "active" : ""}" data-page="${key}">${icon(iconName)} ${label}</button>
           `).join("")}
+          <a class="sidebar-jobs-link" href="https://jobs.nearwork.co" target="_blank" rel="noreferrer">${icon("external-link")} Browse Jobs</a>
         </nav>
         <button id="${state.user ? "signOut" : "signIn"}" class="ghost-action">${icon(state.user ? "log-out" : "log-in")} ${state.user ? "Sign out" : "Sign in"}</button>
       </aside>
@@ -804,7 +805,7 @@ function renderDashboard() {
         </header>
         ${state.notificationSettingsOpen ? renderNotificationSettings() : ""}
         ${state.message ? `<div class="notice">${state.message}</div>` : ""}
-        ${renderActivePage()}
+        ${(() => { try { return renderActivePage(); } catch (err) { console.error("renderActivePage error:", err); return `<div class="notice">Page failed to render. <button type="button" data-page="overview">Go to overview</button></div>`; } })()}
       </section>
     </main>
   `;
@@ -938,7 +939,7 @@ function renderOverview() {
     ${complete ? "" : `
       <section class="hero-card">
         <div><p class="eyebrow">Action needed</p><h2>Finish your profile to unlock matches.</h2><p>Add your role, city, salary, and skills so Nearwork can match you to the right openings.</p></div>
-        <button class="primary-action fit" data-page="profile">${icon("arrow-right")} Complete profile</button>
+        <button class="primary-action fit" type="button" data-page="profile">${icon("arrow-right")} Complete profile</button>
       </section>
     `}
     <section class="summary-grid">
@@ -1738,7 +1739,10 @@ function bindDashboardEvents() {
     setState({ view: "login", activePage: "overview", message: "" });
   });
   document.querySelectorAll("[data-page]").forEach((button) => {
-    button.addEventListener("click", () => setActivePage(button.dataset.page));
+    button.addEventListener("click", (e) => {
+      const target = e.currentTarget.closest("[data-page]") || e.currentTarget;
+      setActivePage(target.dataset.page);
+    });
   });
   document.querySelector("[data-dashboard-home]")?.addEventListener("click", () => setActivePage("overview"));
   document.querySelector("#notificationBell")?.addEventListener("click", () => {

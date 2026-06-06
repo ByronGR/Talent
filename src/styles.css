@@ -502,6 +502,27 @@ select:focus {
   font-weight: 600;
 }
 
+.sidebar-jobs-link {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 7px;
+  color: var(--gray-5);
+  font-size: 0.82rem;
+  font-weight: 500;
+  text-decoration: none;
+  margin-top: 6px;
+  border-top: 1px solid var(--gray-2);
+  padding-top: 12px;
+}
+
+.sidebar-jobs-link:hover {
+  background: var(--gray-1);
+  color: var(--black);
+}
+
 .sidebar .ghost-action {
   margin-top: auto;
   color: var(--gray-5);
@@ -2613,6 +2634,19 @@ textarea:focus {
     min-width: max-content;
     padding: 10px 12px;
     white-space: nowrap;
+  }
+
+  .sidebar-jobs-link {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: max-content;
+    padding: 10px 12px;
+    white-space: nowrap;
+    margin-top: 0;
+    border-top: none;
+    padding-top: 10px;
+    border-left: 1px solid var(--gray-2);
+    padding-left: 12px;
   }
 
   .sidebar .ghost-action {
