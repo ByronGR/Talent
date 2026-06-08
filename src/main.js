@@ -2213,8 +2213,14 @@ window.addEventListener("popstate", () => {
 
 if (hasFirebaseConfig) {
   onAuthStateChanged(auth, (user) => {
-    if (user) loadDashboard(user);
-    else loadPublicPage();
+    if (user) {
+      loadDashboard(user);
+    } else {
+      // Clear any cached applied/session data so stale badges don't survive
+      // account deletion or external session revocation.
+      try { localStorage.removeItem("nw_talent_applied"); } catch {}
+      loadPublicPage();
+    }
   });
   window.setTimeout(() => {
     if (state.loading) loadPublicPage();
