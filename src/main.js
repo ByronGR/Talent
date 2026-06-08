@@ -1661,6 +1661,16 @@ function renderProfileForm(mode = "profile") {
         <div class="profile-card wide">
           <div class="field-label">CV</div>
           <p class="field-hint">Upload the CV you want Nearwork to use for your applications.</p>
+          ${state.candidate?.activeCvName || state.candidate?.cvUrl ? `
+            <div class="cv-item" style="border:1px solid var(--border);border-radius:10px;margin-bottom:4px;">
+              ${icon("file-text")}
+              <div>
+                <strong>${state.candidate.activeCvName || "CV on file"}</strong>
+                <span>Currently saved · select a new file below to replace</span>
+              </div>
+              ${state.candidate.cvUrl ? `<a href="${state.candidate.cvUrl}" target="_blank" rel="noreferrer">Open</a>` : ""}
+            </div>
+          ` : ""}
           <input name="profileCv" type="file" accept=".pdf,.doc,.docx" />
           <input name="profileCvLabel" type="text" placeholder="CV label, e.g. Customer Success CV" />
         </div>

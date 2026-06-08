@@ -566,11 +566,17 @@ async function uploadCandidatePhoto(uid, file) {
 
 async function uploadCandidateCv(uid, file, label) {
   requireFirebase();
-  // Read current activeCvId so we can delete the old file after the new one is uploaded
+  // Read current user doc: get existing activeCvId (for old-file cleanup)
+  // and their candidateCode so we can mirror to the ATS candidates collection.
   let oldCvPath = null;
+  let candidateCode = candidateCodeForUid(uid);
   try {
     const currentDoc = await getDoc(doc(db, collections.users, uid));
-    if (currentDoc.exists()) oldCvPath = currentDoc.data().activeCvId || null;
+    if (currentDoc.exists()) {
+      const d = currentDoc.data();
+      oldCvPath = d.activeCvId || null;
+      if (d.candidateCode) candidateCode = d.candidateCode;
+    }
   } catch { /* ignore */ }
 
   const safeName = file.name.replace(/[^a-z0-9._-]/gi, "-").toLowerCase();
@@ -587,12 +593,23 @@ async function uploadCandidateCv(uid, file, label) {
     url,
     uploadedAt: new Date().toISOString()
   };
+
+  // Write to users/{uid}
   await setDoc(doc(db, collections.users, uid), {
     cvLibrary: arrayUnion(cv),
     activeCvId: cv.id,
     activeCvName: cv.name || cv.fileName,
+    cvUrl: url,
     updatedAt: serverTimestamp()
   }, { merge: true });
+
+  // Mirror CV URL to candidates/{code} so Admin sees the file immediately
+  setDoc(doc(db, collections.candidates, candidateCode), {
+    cvUrl: url,
+    activeCvId: cv.id,
+    activeCvName: cv.name || cv.fileName,
+    updatedAt: serverTimestamp()
+  }, { merge: true }).catch(() => null);
 
   // Delete the old CV file from Storage (non-blocking)
   if (oldCvPath && oldCvPath !== path) {
