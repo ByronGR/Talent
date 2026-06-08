@@ -230,6 +230,7 @@ function toAtsCandidate(uid, data) {
     visa: data.visa || "No",
     linkedin: data.linkedin || "",
     cv: data.activeCvName || "",
+    cvUrl: data.cvUrl || null,
     tags: data.tags || ["talent profile"],
     notes: data.summary || "",
     appliedBefore: Boolean(data.appliedBefore),

@@ -2082,11 +2082,20 @@ function bindDashboardEvents() {
       if (photoFile?.name) {
         photoURL = await uploadCandidatePhoto(state.user.uid, photoFile);
       }
+
+      // CV upload is non-blocking — a Storage failure must not prevent the
+      // rest of the profile (name, salary, skills, etc.) from saving.
       const cvFile = form.get("profileCv");
       let cv = null;
+      let cvUploadFailed = false;
       if (cvFile?.name) {
-        cv = await uploadCandidateCv(state.user.uid, cvFile, form.get("profileCvLabel"));
+        try {
+          cv = await uploadCandidateCv(state.user.uid, cvFile, form.get("profileCvLabel"));
+        } catch {
+          cvUploadFailed = true;
+        }
       }
+
       const enrichedData = {
         ...data,
         photoURL,
@@ -2095,11 +2104,16 @@ function bindDashboardEvents() {
         ...(cv ? {
           activeCvId: cv.id,
           activeCvName: cv.name || cv.fileName,
+          cvUrl: cv.url,           // synced to candidates collection so Admin can see the file
           cvLibrary: [...(state.candidate?.cvLibrary || []), cv]
         } : {})
       };
       const result = await updateCandidateProfile(state.user.uid, enrichedData);
-      const savedMessage = result?.atsSynced === false ? "Profile saved. Nearwork will finish connecting it to your workspace." : "Profile saved.";
+      const savedMessage = cvUploadFailed
+        ? "Profile saved, but the CV failed to upload. Try uploading it again from the CV section."
+        : result?.atsSynced === false
+          ? "Profile saved. Nearwork will finish connecting it to your workspace."
+          : "Profile saved.";
       if (form.get("mode") === "onboarding") {
         window.history.pushState({ page: "overview" }, "", "/");
         setState({ candidate: { ...state.candidate, ...enrichedData }, activePage: "overview", message: "Profile complete. Welcome to Talent." });
