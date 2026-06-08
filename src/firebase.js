@@ -670,6 +670,8 @@ async function parseCvWithAffinda(file) {
   try {
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("workspace", "1007732");
+    formData.append("documentType", "1058304");
     const res = await fetch("https://api.affinda.com/v3/documents", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}` },
