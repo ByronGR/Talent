@@ -25,8 +25,13 @@ import {
   updateProfile,
   uploadCandidateCv,
   uploadCandidatePhoto,
-  upsertCandidate
+  upsertCandidate,
+  parseCvWithAffinda
 } from "./firebase.js";
+
+// Holds work history extracted by Affinda until the profile form is saved.
+// Reset each time a new CV is selected or the form is submitted.
+let _cvParsedData = null;
 
 const app = document.querySelector("#app");
 const SUPPORT_WHATSAPP = "+573135928691";
@@ -1879,6 +1884,7 @@ function bindDashboardEvents() {
     event.target.value = formatSalaryInputValue(event.target.value, currency);
   });
   bindSkillSearch();
+  bindCvAutofill();
   document.querySelectorAll("[data-apply]").forEach((button) => {
     button.addEventListener("click", async () => {
       const job = state.jobs.map(normalizeRole).find((item) => item.code === button.dataset.apply);
@@ -2118,8 +2124,13 @@ function bindDashboardEvents() {
           activeCvName: cv.name || cv.fileName,
           cvUrl: cv.url,           // synced to candidates collection so Admin can see the file
           cvLibrary: [...(state.candidate?.cvLibrary || []), cv]
-        } : {})
+        } : {}),
+        // Merge Affinda-parsed work history (only if present; don't overwrite existing)
+        ...(_cvParsedData?.workHistory?.length && !state.candidate?.workHistory?.length
+          ? { workHistory: _cvParsedData.workHistory }
+          : {})
       };
+      _cvParsedData = null; // consumed — reset for next upload
       const result = await updateCandidateProfile(state.user.uid, enrichedData);
       const savedMessage = cvUploadFailed
         ? "Profile saved, but the CV failed to upload. Try uploading it again from the CV section."
@@ -2158,6 +2169,87 @@ function bindDashboardEvents() {
     } catch (error) {
       setState({ message: friendlyAuthError(error) });
     }
+  });
+}
+
+// ─── CV autofill (Affinda) ────────────────────────────────────────────────────
+// When a candidate selects a CV file on the profile form we immediately send it
+// to Affinda, then silently pre-fill any empty fields with the parsed data.
+// The candidate sees a banner and can review everything before saving.
+
+function bindCvAutofill() {
+  const cvInput = document.querySelector('input[name="profileCv"]');
+  if (!cvInput) return;
+
+  cvInput.addEventListener("change", async () => {
+    const file = cvInput.files?.[0];
+    if (!file) return;
+
+    // Show "Analysing…" hint below the input
+    const hint = document.createElement("p");
+    hint.id = "cvParseHint";
+    hint.className = "field-hint";
+    hint.style.cssText = "color:var(--green);margin-top:6px;";
+    hint.textContent = "Analysing your CV…";
+    const existing = document.querySelector("#cvParseHint");
+    if (existing) existing.remove();
+    cvInput.insertAdjacentElement("afterend", hint);
+
+    _cvParsedData = null;
+    const parsed = await parseCvWithAffinda(file);
+
+    if (!parsed) {
+      hint.textContent = "";
+      return;
+    }
+
+    _cvParsedData = parsed;
+
+    // ── Pre-fill text fields (only if currently empty) ───────────────────────
+    const nameInput = document.querySelector('input[name="name"]');
+    if (nameInput && !nameInput.value.trim() && parsed.name)
+      nameInput.value = parsed.name;
+
+    const phoneInput = document.querySelector('input[name="whatsapp"]');
+    if (phoneInput && !phoneInput.value.trim() && parsed.phone)
+      phoneInput.value = parsed.phone;
+
+    const summaryInput = document.querySelector('textarea[name="summary"]');
+    if (summaryInput && !summaryInput.value.trim() && parsed.summary)
+      summaryInput.value = parsed.summary;
+
+    // ── Add extracted skills to the picker ───────────────────────────────────
+    if (parsed.skills.length > 0) {
+      const selectedWrap = document.querySelector("#selectedSkills");
+      if (selectedWrap) {
+        const existing = new Set(
+          [...selectedWrap.querySelectorAll('input[name="skills"]')].map((i) =>
+            i.value.toLowerCase()
+          )
+        );
+        const empty = selectedWrap.querySelector(".skill-empty");
+        parsed.skills.forEach((skill) => {
+          if (existing.has(skill.toLowerCase())) return;
+          existing.add(skill.toLowerCase());
+          if (empty) empty.remove();
+          const span = document.createElement("span");
+          span.className = "selected-skill";
+          span.innerHTML = `${escapeHtml(skill)}<button type="button" data-skill="${escapeAttr(skill)}">&times;</button><input type="hidden" name="skills" value="${escapeAttr(skill)}" />`;
+          selectedWrap.appendChild(span);
+        });
+      }
+    }
+
+    // ── Show success banner ──────────────────────────────────────────────────
+    const count = [];
+    if (parsed.name) count.push("name");
+    if (parsed.phone) count.push("phone");
+    if (parsed.skills.length) count.push(`${parsed.skills.length} skill${parsed.skills.length > 1 ? "s" : ""}`);
+    if (parsed.workHistory.length) count.push(`${parsed.workHistory.length} work experience entr${parsed.workHistory.length > 1 ? "ies" : "y"}`);
+
+    hint.innerHTML = count.length
+      ? `✓ Pre-filled from your CV: <strong>${count.join(", ")}</strong>. Review below and save.`
+      : "✓ CV analysed. Review your profile and save.";
   });
 }
 

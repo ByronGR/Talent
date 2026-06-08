@@ -660,6 +660,53 @@ async function saveNotificationPreferences(uid, preferences) {
   }, { merge: true });
 }
 
+// ─── CV parsing via Affinda ───────────────────────────────────────────────────
+// Sends the raw file to the Affinda resume parser and returns structured profile
+// fields. Returns null silently on any error so it never blocks the normal flow.
+
+async function parseCvWithAffinda(file) {
+  const key = import.meta.env.VITE_AFFINDA_API_KEY;
+  if (!key || !file) return null;
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("https://api.affinda.com/v3/documents", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}` },
+      body: formData,
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const d = json?.data;
+    if (!d) return null;
+
+    const name = d.name?.raw
+      || [d.name?.first, d.name?.last].filter(Boolean).join(" ")
+      || "";
+    const phone = d.phoneNumbers?.[0]?.value || "";
+    const city  = d.location?.city || "";
+    const summary = typeof d.summary === "string" ? d.summary.slice(0, 800) : "";
+    const skills = (d.skills || []).map((s) => s.name).filter(Boolean);
+
+    const workHistory = (d.workExperience || [])
+      .filter((w) => w.jobTitle || w.organization)
+      .map((w) => ({
+        title:   w.jobTitle      || "",
+        company: w.organization  || "",
+        from:    w.dates?.startDate
+                   ? String(w.dates.startDate).slice(0, 7)
+                   : "",
+        to:      w.dates?.isCurrent
+                   ? "present"
+                   : (w.dates?.endDate ? String(w.dates.endDate).slice(0, 7) : ""),
+      }));
+
+    return { name, phone, city, summary, skills, workHistory };
+  } catch {
+    return null;
+  }
+}
+
 export {
   applyToJob,
   auth,
@@ -689,5 +736,6 @@ export {
   saveNotificationPreferences,
   uploadCandidateCv,
   uploadCandidatePhoto,
-  upsertCandidate
+  upsertCandidate,
+  parseCvWithAffinda
 };
