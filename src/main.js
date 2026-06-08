@@ -2099,6 +2099,8 @@ function bindDashboardEvents() {
       const enrichedData = {
         ...data,
         photoURL,
+        // Preserve the existing CAND code so we never create a duplicate candidate doc
+        candidateCode: state.candidate?.candidateCode,
         // Forward stored marketing consent so HubSpot sync remains gated correctly
         marketingConsent: state.candidate?.marketingConsent === true,
         ...(cv ? {
