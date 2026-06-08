@@ -29,9 +29,10 @@ import {
   parseCvWithAffinda
 } from "./firebase.js";
 
-// Holds work history extracted by Affinda until the profile form is saved.
+// Holds data extracted by Affinda until the profile form is saved.
 // Reset each time a new CV is selected or the form is submitted.
 let _cvParsedData = null;
+let _cvOverwrite  = false; // true for new candidates and returning candidates who toggled "rewrite"
 
 const app = document.querySelector("#app");
 const SUPPORT_WHATSAPP = "+573135928691";
@@ -1663,7 +1664,7 @@ function renderProfileForm(mode = "profile") {
           <p class="field-hint">Search for skills and add everything that applies to your experience.</p>
           ${skillSearchMarkup(skills)}
         </div>
-        <div class="profile-card wide">
+        <div class="profile-card wide" id="profileCvCard">
           <div class="field-label">CV</div>
           <p class="field-hint">Upload the CV you want Nearwork to use for your applications.</p>
           ${state.candidate?.activeCvName || state.candidate?.cvUrl ? `
@@ -2125,12 +2126,13 @@ function bindDashboardEvents() {
           cvUrl: cv.url,           // synced to candidates collection so Admin can see the file
           cvLibrary: [...(state.candidate?.cvLibrary || []), cv]
         } : {}),
-        // Merge Affinda-parsed work history (only if present; don't overwrite existing)
-        ...(_cvParsedData?.workHistory?.length && !state.candidate?.workHistory?.length
+        // Merge Affinda-parsed work history — always for new candidates, only when
+        // the "rewrite" toggle is ON for returning candidates.
+        ...(_cvParsedData?.workHistory?.length && (_cvOverwrite || !state.candidate?.workHistory?.length)
           ? { workHistory: _cvParsedData.workHistory }
           : {})
       };
-      _cvParsedData = null; // consumed — reset for next upload
+      _cvParsedData = null; _cvOverwrite = false; // consumed — reset for next upload
       const result = await updateCandidateProfile(state.user.uid, enrichedData);
       const savedMessage = cvUploadFailed
         ? "Profile saved, but the CV failed to upload. Try uploading it again from the CV section."
@@ -2173,84 +2175,177 @@ function bindDashboardEvents() {
 }
 
 // ─── CV autofill (Affinda) ────────────────────────────────────────────────────
-// When a candidate selects a CV file on the profile form we immediately send it
-// to Affinda, then silently pre-fill any empty fields with the parsed data.
-// The candidate sees a banner and can review everything before saving.
+// NEW CANDIDATE  — the form is hidden behind the CV upload. Everything stays
+//                  locked until Affinda finishes (or the user clicks "skip").
+// RETURNING CANDIDATE — form shows normally. Uploading a new CV reveals a
+//                  toggle "Update my profile from this CV" (default: off).
 
 function bindCvAutofill() {
-  const cvInput = document.querySelector('input[name="profileCv"]');
-  if (!cvInput) return;
+  const form    = document.querySelector("#profileForm");
+  const cvInput = form?.querySelector('input[name="profileCv"]');
+  if (!form || !cvInput) return;
+
+  // A candidate is "new" if they haven't onboarded yet and have no profile data
+  const isNew = form.querySelector('input[name="mode"]')?.value === "onboarding"
+    && !state.candidate?.skills?.length
+    && !state.candidate?.workHistory?.length
+    && !state.candidate?.name;
+
+  if (isNew) {
+    _bindNewCandidateCvGate(form, cvInput);
+  } else {
+    _bindReturnCandidateCvToggle(cvInput);
+  }
+}
+
+// ── New candidate: gate the form behind the CV upload ────────────────────────
+
+function _bindNewCandidateCvGate(form, cvInput) {
+  const cvCard = document.querySelector("#profileCvCard");
+  if (!cvCard) return;
+
+  // Hide every direct child of the form except the CV card and hidden inputs
+  const hideable = [...form.children].filter(
+    (el) => el !== cvCard && el.type !== "hidden" && el.getAttribute("name") !== "mode"
+  );
+  hideable.forEach((el) => { el.style.display = "none"; });
+
+  // Gate prompt
+  const gate = document.createElement("p");
+  gate.id = "cvGatePrompt";
+  gate.style.cssText = "font-size:13px;color:var(--mid);margin:10px 0 4px;text-align:center;";
+  gate.innerHTML = `Upload your CV and we'll fill in the rest for you — or <button type="button" id="skipCvParse" style="background:none;border:none;padding:0;font-size:13px;color:var(--green);cursor:pointer;text-decoration:underline;">skip and fill in manually</button>`;
+  cvCard.insertAdjacentElement("afterend", gate);
+
+  function revealForm() {
+    document.querySelector("#cvGatePrompt")?.remove();
+    document.querySelector("#cvParseLoading")?.remove();
+    hideable.forEach((el) => { el.style.display = ""; });
+  }
+
+  document.querySelector("#skipCvParse")?.addEventListener("click", revealForm);
 
   cvInput.addEventListener("change", async () => {
     const file = cvInput.files?.[0];
     if (!file) return;
 
-    // Show "Analysing…" hint below the input
-    const hint = document.createElement("p");
-    hint.id = "cvParseHint";
-    hint.className = "field-hint";
-    hint.style.cssText = "color:var(--green);margin-top:6px;";
-    hint.textContent = "Analysing your CV…";
-    const existing = document.querySelector("#cvParseHint");
-    if (existing) existing.remove();
-    cvInput.insertAdjacentElement("afterend", hint);
+    // Replace gate with loading message — form stays hidden
+    document.querySelector("#cvGatePrompt")?.remove();
+    const loading = document.createElement("p");
+    loading.id = "cvParseLoading";
+    loading.style.cssText = "font-size:13px;font-weight:600;color:var(--green);padding:14px 0;text-align:center;";
+    loading.textContent = "Analysing your CV…";
+    cvCard.insertAdjacentElement("afterend", loading);
 
     _cvParsedData = null;
-    const parsed = await parseCvWithAffinda(file);
+    _cvOverwrite  = true; // new candidate — always overwrite (nothing to protect)
+    const parsed  = await parseCvWithAffinda(file);
 
-    if (!parsed) {
-      hint.textContent = "";
-      return;
-    }
+    revealForm(); // always reveal, even if parsing failed
+
+    if (!parsed) return;
 
     _cvParsedData = parsed;
-
-    // ── Pre-fill text fields (only if currently empty) ───────────────────────
-    const nameInput = document.querySelector('input[name="name"]');
-    if (nameInput && !nameInput.value.trim() && parsed.name)
-      nameInput.value = parsed.name;
-
-    const phoneInput = document.querySelector('input[name="whatsapp"]');
-    if (phoneInput && !phoneInput.value.trim() && parsed.phone)
-      phoneInput.value = parsed.phone;
-
-    const summaryInput = document.querySelector('textarea[name="summary"]');
-    if (summaryInput && !summaryInput.value.trim() && parsed.summary)
-      summaryInput.value = parsed.summary;
-
-    // ── Add extracted skills to the picker ───────────────────────────────────
-    if (parsed.skills.length > 0) {
-      const selectedWrap = document.querySelector("#selectedSkills");
-      if (selectedWrap) {
-        const existing = new Set(
-          [...selectedWrap.querySelectorAll('input[name="skills"]')].map((i) =>
-            i.value.toLowerCase()
-          )
-        );
-        const empty = selectedWrap.querySelector(".skill-empty");
-        parsed.skills.forEach((skill) => {
-          if (existing.has(skill.toLowerCase())) return;
-          existing.add(skill.toLowerCase());
-          if (empty) empty.remove();
-          const span = document.createElement("span");
-          span.className = "selected-skill";
-          span.innerHTML = `${escapeHtml(skill)}<button type="button" data-skill="${escapeAttr(skill)}">&times;</button><input type="hidden" name="skills" value="${escapeAttr(skill)}" />`;
-          selectedWrap.appendChild(span);
-        });
-      }
-    }
-
-    // ── Show success banner ──────────────────────────────────────────────────
-    const count = [];
-    if (parsed.name) count.push("name");
-    if (parsed.phone) count.push("phone");
-    if (parsed.skills.length) count.push(`${parsed.skills.length} skill${parsed.skills.length > 1 ? "s" : ""}`);
-    if (parsed.workHistory.length) count.push(`${parsed.workHistory.length} work experience entr${parsed.workHistory.length > 1 ? "ies" : "y"}`);
-
-    hint.innerHTML = count.length
-      ? `✓ Pre-filled from your CV: <strong>${count.join(", ")}</strong>. Review below and save.`
-      : "✓ CV analysed. Review your profile and save.";
+    _applyParsedToForm(parsed, true);
+    _showCvParseBanner(parsed, cvInput);
   });
+}
+
+// ── Returning candidate: toggle below the CV file input ──────────────────────
+
+function _bindReturnCandidateCvToggle(cvInput) {
+  cvInput.addEventListener("change", () => {
+    const file = cvInput.files?.[0];
+    if (!file) return;
+
+    _cvParsedData = null;
+    _cvOverwrite  = false;
+    document.querySelector("#cvRewriteWrap")?.remove();
+    document.querySelector("#cvParseHint")?.remove();
+
+    // Kick off parsing in background so it's ready when toggle is turned on
+    const parsedPromise = parseCvWithAffinda(file);
+
+    const wrap = document.createElement("div");
+    wrap.id = "cvRewriteWrap";
+    wrap.style.cssText = "margin-top:8px;";
+    wrap.innerHTML = `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--mid);"><input type="checkbox" id="cvRewriteCheck" style="accent-color:var(--green);width:14px;height:14px;" /> Update my profile information from this CV</label>`;
+    cvInput.insertAdjacentElement("afterend", wrap);
+
+    document.querySelector("#cvRewriteCheck").addEventListener("change", async (e) => {
+      document.querySelector("#cvParseHint")?.remove();
+
+      if (!e.target.checked) {
+        _cvParsedData = null;
+        _cvOverwrite  = false;
+        return;
+      }
+
+      const hint = document.createElement("p");
+      hint.id = "cvParseHint";
+      hint.style.cssText = "font-size:12px;color:var(--green);margin:4px 0 0;";
+      hint.textContent = "Analysing your CV…";
+      wrap.insertAdjacentElement("afterend", hint);
+
+      const parsed = await parsedPromise;
+
+      if (!parsed) {
+        hint.textContent = "Could not extract data from this CV. The file will still be saved.";
+        return;
+      }
+
+      _cvParsedData = parsed;
+      _cvOverwrite  = true;
+      _applyParsedToForm(parsed, true);
+      _showCvParseBanner(parsed, cvInput);
+    });
+  });
+}
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+function _applyParsedToForm(parsed, overwrite) {
+  const set = (sel, val) => {
+    const el = document.querySelector(sel);
+    if (el && val && (overwrite || !el.value?.trim())) el.value = val;
+  };
+  set('input[name="name"]',      parsed.name);
+  set('input[name="whatsapp"]',  parsed.phone);
+  set('textarea[name="summary"]', parsed.summary);
+
+  if (parsed.skills?.length) {
+    const wrap = document.querySelector("#selectedSkills");
+    if (wrap) {
+      if (overwrite) wrap.innerHTML = "";
+      const existing = new Set([...wrap.querySelectorAll('input[name="skills"]')].map((i) => i.value.toLowerCase()));
+      wrap.querySelector(".skill-empty")?.remove();
+      parsed.skills.forEach((skill) => {
+        if (existing.has(skill.toLowerCase())) return;
+        existing.add(skill.toLowerCase());
+        const span = document.createElement("span");
+        span.className = "selected-skill";
+        span.innerHTML = `${escapeHtml(skill)}<button type="button" data-skill="${escapeAttr(skill)}">&times;</button><input type="hidden" name="skills" value="${escapeAttr(skill)}" />`;
+        wrap.appendChild(span);
+      });
+    }
+  }
+}
+
+function _showCvParseBanner(parsed, cvInput) {
+  const parts = [];
+  if (parsed.name)                parts.push("name");
+  if (parsed.phone)               parts.push("phone");
+  if (parsed.skills?.length)      parts.push(`${parsed.skills.length} skill${parsed.skills.length > 1 ? "s" : ""}`);
+  if (parsed.workHistory?.length) parts.push(`${parsed.workHistory.length} work entr${parsed.workHistory.length > 1 ? "ies" : "y"}`);
+
+  document.querySelector("#cvParseHint")?.remove();
+  const hint = document.createElement("p");
+  hint.id = "cvParseHint";
+  hint.style.cssText = "font-size:12px;color:var(--green);margin:4px 0 0;";
+  hint.innerHTML = parts.length
+    ? `✓ Pre-filled: <strong>${parts.join(", ")}</strong>. Review and save.`
+    : "✓ CV analysed. Review your profile and save.";
+  cvInput.insertAdjacentElement("afterend", hint);
 }
 
 function bindSkillSearch() {
