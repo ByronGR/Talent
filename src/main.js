@@ -736,7 +736,18 @@ async function loadDashboard(user) {
     }
     const isNewAccount = sessionStorage.getItem("nw_new_account") === "1";
     if (isNewAccount) sessionStorage.removeItem("nw_new_account");
-    const activePage = isNewAccount && candidate?.onboarded !== true ? "onboarding" : pageFromPath();
+    // Show wizard for:
+    //  - explicit new-account flag (talent.nearwork.co signup)
+    //  - accounts created via jobs.nearwork.co that have no targetRole or onboarded flag yet
+    // Skip wizard for existing candidates who already have a complete profile (they
+    // just lack the onboarded flag) — silently mark them as onboarded instead.
+    const needsWizard = !candidate?.onboarded && !candidate?.targetRole;
+    const hasProfile  = !candidate?.onboarded && candidate?.targetRole;
+    if (hasProfile) {
+      // Existing candidate missing the flag — backfill it silently
+      updateCandidateProfile(user.uid, { onboarded: true, candidateCode: candidate?.candidateCode }).catch(() => null);
+    }
+    const activePage = (isNewAccount || needsWizard) ? "onboarding" : pageFromPath();
     setState({
       candidate: {
         ...(candidate || {}),
@@ -1013,8 +1024,22 @@ function renderOverview() {
 }
 
 function renderOnboarding() {
-  // Reset wizard on each fresh render of the onboarding page
-  _onbStep = 1; _onbData = {}; _onbCvFile = null; _onbParsePromise = null; _onbParsed = null;
+  _onbStep = 1;
+  // Pre-populate from any data already collected (e.g. from jobs.nearwork.co account creation)
+  // so the candidate doesn't have to re-enter what they've already provided.
+  const c = state.candidate || {};
+  _onbData = {
+    roleGroup:  c.roleGroup  || "",
+    targetRole: c.targetRole || "",
+    department: c.department || c.locationDepartment || "",
+    city:       c.city       || c.locationCity       || "",
+    salary:     String(c.salaryAmount || c.salary || ""),
+    english:    c.english    || "",
+    name:       c.name       || "",
+    whatsapp:   c.whatsapp   || c.phone              || "",
+    linkedin:   c.linkedin   || "",
+  };
+  _onbCvFile = null; _onbParsePromise = null; _onbParsed = null;
   return `<div id="onboardingWizard" class="onb-shell"></div>`;
 }
 
