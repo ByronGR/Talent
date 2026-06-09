@@ -69,12 +69,12 @@ import{initializeApp as e}from"https://www.gstatic.com/firebasejs/10.12.5/fireba
         ${t?`
         <div id="consentBlock" style="margin:2px 0 4px;">
           <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:#2d2d2d;line-height:1.5;margin-bottom:3px;">
-            <input type="checkbox" name="privacyConsent" id="privacyConsent" style="margin-top:3px;flex-shrink:0;accent-color:#16a085;">
+            <input type="checkbox" name="privacyConsent" id="privacyConsent" style="width:16px!important;height:16px!important;min-height:16px!important;min-width:16px!important;padding:0!important;border:1px solid #aaa!important;border-radius:3px!important;background:#fff!important;flex-shrink:0;margin-top:3px;accent-color:#16a085;cursor:pointer;">
             <span>I have read and agree to Nearwork's <a href="https://nearwork.co/privacy" target="_blank" rel="noopener" style="color:#16a085;text-decoration:underline;">Privacy Policy</a> and <a href="https://nearwork.co/terms" target="_blank" rel="noopener" style="color:#16a085;text-decoration:underline;">Terms of Service</a> *</span>
           </label>
           <p id="privacyConsentError" style="display:none;font-size:12px;color:#c0392b;margin:2px 0 6px 27px;">You must accept the Privacy Policy to continue</p>
           <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;margin-top:10px;font-size:13px;color:#555;line-height:1.5;">
-            <input type="checkbox" name="marketingConsent" id="marketingConsent" style="margin-top:3px;flex-shrink:0;accent-color:#16a085;">
+            <input type="checkbox" name="marketingConsent" id="marketingConsent" style="width:16px!important;height:16px!important;min-height:16px!important;min-width:16px!important;padding:0!important;border:1px solid #aaa!important;border-radius:3px!important;background:#fff!important;flex-shrink:0;margin-top:3px;accent-color:#16a085;cursor:pointer;">
             <span>I agree to receive future job opportunities and updates from Nearwork (optional)</span>
           </label>
         </div>`:``}
