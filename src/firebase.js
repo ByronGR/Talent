@@ -688,7 +688,6 @@ async function parseCvWithAffinda(file) {
     });
     if (!res.ok) return null;
     const json = await res.json();
-    if (json._topKeys) console.log("[CV parse] Affinda top-level keys:", json._topKeys.join(", "));
     if (!json?.ok) return null;
     const { name, phone, city, summary, skills, workHistory, languages, certifications } = json;
     return { name, phone, city, summary, skills, workHistory, languages: languages || [], certifications: certifications || [] };
