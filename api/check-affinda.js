@@ -19,7 +19,7 @@ export default async function handler(req, res) {
 
   // Test auth with a lightweight GET to /v3/workspaces
   try {
-    const testRes = await fetch("https://api.affinda.com/v3/workspaces", {
+    const testRes = await fetch("https://api.us1.affinda.com/v3/workspaces", {
       headers: { Authorization: `Bearer ${key.trim()}` },
     });
     const body = await testRes.text().catch(() => "");

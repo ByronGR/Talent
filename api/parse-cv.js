@@ -58,7 +58,7 @@ export default async function handler(req, res) {
       Buffer.from(`${CRLF}--${bnd}--${CRLF}`),
     ]);
 
-    const affRes = await fetch("https://api.affinda.com/v3/documents", {
+    const affRes = await fetch("https://api.us1.affinda.com/v3/documents", {
       method: "POST",
       headers: {
         Authorization:    `Bearer ${key}`,
