@@ -27,24 +27,34 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: false, step: "auth", keyInfo, affindaStatus: testRes.status, affindaDetail: body.slice(0, 300) });
     }
 
-    // Auth passed — now fetch workspaces for org 1012950
-    const wsRes  = await fetch("https://api.us1.affinda.com/v3/workspaces?organization=1012950", {
+    // Auth passed — fetch workspace details + document types using the
+    // identifier shown in Affinda UI (Settings → Integrations → Workspace ID)
+    const wsIdentifier = "iKIEtiBE";
+
+    const wsRes  = await fetch(`https://api.us1.affinda.com/v3/workspaces/${wsIdentifier}`, {
       headers: { Authorization: `Bearer ${key.trim()}` },
     });
     const wsBody = await wsRes.json().catch(() => null);
 
-    // Also fetch document types
-    const dtRes  = await fetch("https://api.us1.affinda.com/v3/documentTypes", {
+    // Document types are workspace-scoped
+    const dtRes  = await fetch(`https://api.us1.affinda.com/v3/workspaces/${wsIdentifier}/document_types`, {
       headers: { Authorization: `Bearer ${key.trim()}` },
     });
     const dtBody = await dtRes.json().catch(() => null);
+
+    // Also try collections endpoint (Affinda v3 may use "collections" for doc types)
+    const colRes  = await fetch(`https://api.us1.affinda.com/v3/collections?workspace=${wsIdentifier}`, {
+      headers: { Authorization: `Bearer ${key.trim()}` },
+    });
+    const colBody = await colRes.json().catch(() => null);
 
     return res.status(200).json({
       ok: true,
       step: "auth_ok",
       keyInfo,
-      workspaces: wsBody,
-      documentTypes: dtBody,
+      workspace: { status: wsRes.status, body: wsBody },
+      documentTypes: { status: dtRes.status, body: dtBody },
+      collections: { status: colRes.status, body: colBody },
     });
   } catch (e) {
     return res.status(200).json({ ok: false, step: "fetch", keyInfo, error: e?.message });
