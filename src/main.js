@@ -769,8 +769,10 @@ async function loadDashboard(user) {
     if (notificationUnsubscribe) notificationUnsubscribe();
     if (hasFirebaseConfig) {
       notificationUnsubscribe = subscribeToNotifications(user.uid, (notifications) => {
+        // Preserve any in-progress flash message (e.g. "Analysing your CV…")
+        // so a live notification update doesn't wipe it mid-parse.
         state.notifications = notifications;
-        if (state.view === "dashboard") renderDashboard();
+        if (state.view === "dashboard" && !state.message) renderDashboard();
       });
     }
   } catch (error) {
@@ -3213,19 +3215,14 @@ function _bindReturnCandidateCvToggle(cvInput) {
     _cvOverwrite   = false;
     _pendingCvFile = null;
 
-    // Inject hint directly — no setState here so the form DOM stays intact during the parse
-    document.querySelector("#cvParseHint")?.remove();
-    const hint = document.createElement("p");
-    hint.id = "cvParseHint";
-    hint.style.cssText = "font-size:12.5px;font-weight:600;color:var(--green);margin:10px 0 0;";
-    hint.textContent = "⏳ Analysing your CV…";
-    cvInput.insertAdjacentElement("afterend", hint);
+    // Show "Analysing…" via the flash bar so it survives any notification-triggered re-render
+    setState({ message: "⏳ Analysing your CV — this takes up to 30 seconds…" });
 
     const parsed = await parseCvWithAffinda(file);
+    console.log("[CV autofill] parseCvWithAffinda result:", parsed);
 
     if (!parsed) {
-      hint.style.color = "var(--mid)";
-      hint.textContent = "Could not extract data from this CV. The file will still be saved when you click Save.";
+      setState({ message: "⚠️ Could not read your CV. Check the browser console for details, or try a different file." });
       return;
     }
 
