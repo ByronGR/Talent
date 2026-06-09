@@ -78,14 +78,19 @@ export default async function handler(req, res) {
     const d    = json?.data;
 
     if (!d) {
-      return res.status(200).json({ ok: true, name: "", phone: "", city: "", summary: "", skills: [], workHistory: [] });
+      return res.status(200).json({ ok: true, name: "", phone: "", city: "", summary: "", skills: [], workHistory: [], languages: [], certifications: [] });
     }
 
     const name    = d.name?.raw || [d.name?.first, d.name?.last].filter(Boolean).join(" ") || "";
     const phone   = d.phoneNumbers?.[0]?.rawText || d.phoneNumbers?.[0]?.value || "";
     const city    = d.location?.city || "";
     const summary = (typeof d.summary === "string" ? d.summary : d.summary?.raw || "").slice(0, 800);
-    const skills  = (d.skills || []).map((s) => s.name || s.text || "").filter(Boolean);
+
+    // Strip trailing punctuation/whitespace that Affinda sometimes includes
+    const cleanSkill = (s) => String(s || "").replace(/[,.\s]+$/, "").replace(/^[,.\s]+/, "").trim();
+    const skills = (d.skills || [])
+      .map((s) => cleanSkill(s.name || s.text || ""))
+      .filter((s) => s.length > 1);
 
     const workHistory = (d.workExperience || [])
       .filter((w) => w.jobTitle || w.organization)
@@ -96,7 +101,19 @@ export default async function handler(req, res) {
         to:      w.dates?.isCurrent ? "present" : (w.dates?.endDate ? String(w.dates.endDate).slice(0, 7) : ""),
       }));
 
-    return res.status(200).json({ ok: true, name, phone, city, summary, skills, workHistory });
+    const languages = (d.languages || [])
+      .map((l) => cleanSkill(l.name || l.rawText || ""))
+      .filter(Boolean);
+
+    const certifications = (d.certifications || [])
+      .map((c) => ({
+        name:   cleanSkill(c.name || c.rawText || ""),
+        issuer: c.organization || c.issuer || "",
+        date:   c.completionDate ? String(c.completionDate).slice(0, 7) : "",
+      }))
+      .filter((c) => c.name);
+
+    return res.status(200).json({ ok: true, name, phone, city, summary, skills, workHistory, languages, certifications });
 
   } catch (e) {
     console.error("[parse-cv] error:", e?.message || String(e));

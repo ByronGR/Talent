@@ -685,8 +685,8 @@ async function parseCvWithAffinda(file) {
     if (!res.ok) return null;
     const json = await res.json();
     if (!json?.ok) return null;
-    const { name, phone, city, summary, skills, workHistory } = json;
-    return { name, phone, city, summary, skills, workHistory };
+    const { name, phone, city, summary, skills, workHistory, languages, certifications } = json;
+    return { name, phone, city, summary, skills, workHistory, languages: languages || [], certifications: certifications || [] };
   } catch {
     return null;
   }

@@ -450,8 +450,9 @@ function roleOptionsForGroup(group, selectedRole) {
 }
 
 function canonicalSkillName(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
+  // Strip trailing/leading punctuation (Affinda often returns "Salesforce," or "Agile.")
+  const raw = String(value || "").replace(/[,.\s]+$/, "").replace(/^[,.\s]+/, "").trim();
+  if (!raw || raw.length < 2) return "";
   const match = ALL_SKILLS.find((skill) => normalizeSkillName(skill) === normalizeSkillName(raw));
   if (match) return match;
   return raw.split(/\s+/).map((part) => part.length <= 3 && part === part.toUpperCase()
@@ -2003,6 +2004,27 @@ function workEntryHtml(index, entry = {}) {
     </div>`;
 }
 
+function certEntryHtml(index, entry = {}) {
+  const i = index;
+  return `
+    <div class="cert-entry" data-cert-index="${i}" style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;position:relative;">
+      <button type="button" class="remove-cert-entry" data-remove="${i}" style="position:absolute;top:10px;right:12px;background:none;border:none;font-size:16px;color:var(--light);cursor:pointer;line-height:1;padding:2px 4px;" aria-label="Remove">×</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
+        <label style="display:grid;gap:4px;font-size:11px;font-weight:700;color:var(--mid);letter-spacing:.04em;">Certificate / Course
+          <input type="text" class="cert-field" data-field="name" value="${escapeAttr(entry.name || "")}" placeholder="e.g. Google Data Analytics" style="min-height:38px;font-size:13px;" />
+        </label>
+        <label style="display:grid;gap:4px;font-size:11px;font-weight:700;color:var(--mid);letter-spacing:.04em;">Issuing organisation <span style="font-weight:400;opacity:.6;">optional</span>
+          <input type="text" class="cert-field" data-field="issuer" value="${escapeAttr(entry.issuer || "")}" placeholder="e.g. Coursera, HubSpot" style="min-height:38px;font-size:13px;" />
+        </label>
+      </div>
+      <div style="max-width:200px;">
+        <label style="display:grid;gap:4px;font-size:11px;font-weight:700;color:var(--mid);letter-spacing:.04em;">Date (YYYY-MM) <span style="font-weight:400;opacity:.6;">optional</span>
+          <input type="text" class="cert-field" data-field="date" value="${escapeAttr(entry.date || "")}" placeholder="2023-06" style="min-height:38px;font-size:13px;" />
+        </label>
+      </div>
+    </div>`;
+}
+
 function renderProfileForm(mode = "profile") {
   const skills = candidateSkills();
   const location = selectedLocation();
@@ -2059,6 +2081,9 @@ function renderProfileForm(mode = "profile") {
               <div class="salary-field"><select id="salaryCurrencyInput" name="salaryCurrency"><option value="USD" ${normalizedSalary.salaryCurrency === "USD" ? "selected" : ""}>USD</option><option value="COP" ${normalizedSalary.salaryCurrency === "COP" ? "selected" : ""}>COP</option></select><input id="salaryInput" name="salary" value="${escapeAttr(normalizedSalary.salary || "")}" inputmode="numeric" placeholder="1000" /></div>
             </label>
             <label>English level<select name="english">${["", "B1", "B2", "C1", "C2", "Native"].map((level) => `<option value="${level}" ${state.candidate?.english === level ? "selected" : ""}>${level || "Select level"}</option>`).join("")}</select></label>
+            <label>Other languages <span class="optional-label">optional</span>
+              <input name="languages" value="${escapeAttr((state.candidate?.languages || []).join(", "))}" placeholder="e.g. Spanish, Portuguese, French" />
+            </label>
           </div>
         </div>
         <div class="profile-card wide">
@@ -2101,6 +2126,14 @@ function renderProfileForm(mode = "profile") {
             ${(state.candidate?.workHistory || []).map((w, i) => workEntryHtml(i, w)).join("")}
           </div>
           <button type="button" id="addWorkEntry" class="secondary-action" style="margin-top:12px;width:auto;padding:0 16px;min-height:36px;font-size:12px;">${icon("plus")} Add position</button>
+        </div>
+        <div class="profile-card wide" id="certCard">
+          <div class="field-label">Certifications &amp; courses <span class="optional-label">optional</span></div>
+          <p class="field-hint">Add any certificates, licences, or courses relevant to your work.</p>
+          <div id="certEntries">
+            ${(state.candidate?.certifications || []).map((c, i) => certEntryHtml(i, c)).join("")}
+          </div>
+          <button type="button" id="addCertEntry" class="secondary-action" style="margin-top:12px;width:auto;padding:0 16px;min-height:36px;font-size:12px;">${icon("plus")} Add certificate</button>
         </div>
         <input type="hidden" name="mode" value="${mode}" />
         <button class="primary-action fit" type="submit">${icon("save")} ${mode === "onboarding" ? "Finish setup" : "Save profile"}</button>
@@ -2309,6 +2342,7 @@ function bindDashboardEvents() {
   bindSkillSearch();
   bindCvAutofill();
   bindWorkHistoryEditor();
+  bindCertEditor();
   document.querySelectorAll("[data-apply]").forEach((button) => {
     button.addEventListener("click", async () => {
       const job = state.jobs.map(normalizeRole).find((item) => item.code === button.dataset.apply);
@@ -2507,6 +2541,7 @@ function bindDashboardEvents() {
       phone: form.get("whatsapp"),
       skills: [...new Set(form.getAll("skills").map(canonicalSkillName).filter(Boolean))],
       otherSkills: [],
+      languages: (form.get("languages") || "").split(",").map((l) => l.trim()).filter(Boolean),
       summary: form.get("summary"),
       email: state.candidate?.email || state.user?.email || "",
       availability: state.candidate?.availability || "open",
@@ -2557,6 +2592,13 @@ function bindDashboardEvents() {
           if (_cvParsedData?.workHistory?.length && (_cvOverwrite || !state.candidate?.workHistory?.length))
             return _cvParsedData.workHistory;
           return state.candidate?.workHistory || [];
+        })(),
+        certifications: (() => {
+          const manual = collectCertifications();
+          if (manual.length) return manual;
+          if (_cvParsedData?.certifications?.length && (_cvOverwrite || !state.candidate?.certifications?.length))
+            return _cvParsedData.certifications;
+          return state.candidate?.certifications || [];
         })()
       };
       _cvParsedData = null; _cvOverwrite = false; // consumed — reset for next upload
@@ -2639,6 +2681,31 @@ function collectWorkHistory() {
     const f = (field) => row.querySelector(`[data-field="${field}"]`)?.value?.trim() || "";
     return { title: f("title"), company: f("company"), from: f("from"), to: f("to") };
   }).filter((w) => w.title || w.company);
+}
+
+function bindCertEditor() {
+  const container = document.querySelector("#certCard");
+  if (!container) return;
+  let nextIndex = container.querySelectorAll(".cert-entry").length;
+
+  container.addEventListener("click", (e) => {
+    const removeBtn = e.target.closest(".remove-cert-entry");
+    if (removeBtn) { removeBtn.closest(".cert-entry")?.remove(); return; }
+    if (e.target.closest("#addCertEntry")) {
+      const entries = document.querySelector("#certEntries");
+      if (!entries) return;
+      const div = document.createElement("div");
+      div.innerHTML = certEntryHtml(nextIndex++, {});
+      entries.appendChild(div.firstElementChild);
+    }
+  });
+}
+
+function collectCertifications() {
+  return [...document.querySelectorAll(".cert-entry")].map((row) => {
+    const f = (field) => row.querySelector(`[data-field="${field}"]`)?.value?.trim() || "";
+    return { name: f("name"), issuer: f("issuer"), date: f("date") };
+  }).filter((c) => c.name);
 }
 
 function bindCvAutofill() {
@@ -2807,14 +2874,38 @@ function _applyParsedToForm(parsed, overwrite) {
       });
     }
   }
+
+  // Populate languages field
+  if (parsed.languages?.length) {
+    const langInput = document.querySelector('input[name="languages"]');
+    if (langInput && (overwrite || !langInput.value?.trim())) {
+      langInput.value = parsed.languages.join(", ");
+    }
+  }
+
+  // Populate certifications editor
+  if (parsed.certifications?.length) {
+    const certEntries = document.querySelector("#certEntries");
+    if (certEntries) {
+      if (overwrite) certEntries.innerHTML = "";
+      let idx = certEntries.querySelectorAll(".cert-entry").length;
+      parsed.certifications.forEach((c) => {
+        const div = document.createElement("div");
+        div.innerHTML = certEntryHtml(idx++, c);
+        certEntries.appendChild(div.firstElementChild);
+      });
+    }
+  }
 }
 
 function _showCvParseBanner(parsed, cvInput) {
   const parts = [];
-  if (parsed.name)                parts.push("name");
-  if (parsed.phone)               parts.push("phone");
-  if (parsed.skills?.length)      parts.push(`${parsed.skills.length} skill${parsed.skills.length > 1 ? "s" : ""}`);
-  if (parsed.workHistory?.length) parts.push(`${parsed.workHistory.length} work entr${parsed.workHistory.length > 1 ? "ies" : "y"}`);
+  if (parsed.name)                    parts.push("name");
+  if (parsed.phone)                   parts.push("phone");
+  if (parsed.skills?.length)          parts.push(`${parsed.skills.length} skill${parsed.skills.length > 1 ? "s" : ""}`);
+  if (parsed.workHistory?.length)     parts.push(`${parsed.workHistory.length} role${parsed.workHistory.length > 1 ? "s" : ""}`);
+  if (parsed.certifications?.length)  parts.push(`${parsed.certifications.length} cert${parsed.certifications.length > 1 ? "s" : ""}`);
+  if (parsed.languages?.length)       parts.push(`languages`);
 
   document.querySelector("#cvParseHint")?.remove();
   const hint = document.createElement("p");
