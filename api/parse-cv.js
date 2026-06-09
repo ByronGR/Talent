@@ -1,13 +1,7 @@
 // POST /api/parse-cv
-// Proxies a CV file to the Affinda Resume Parser so the API key never
-// appears in the client bundle.
-//
-// Request: POST, Content-Type: application/json
-//   { data: "<base64 file>", filename: "cv.pdf", mimeType: "application/pdf" }
-//
-// Response:
-//   { ok: true,  name, phone, city, summary, skills[], workHistory[] }
-//   { ok: false, error: "..." }
+// Server-side proxy: receives a CV as base64 JSON, sends it to the
+// Affinda Resume Parser as multipart/form-data, returns structured data.
+// The API key lives in process.env.AFFINDA_API_KEY (server-side only).
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -19,54 +13,65 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok: false, error: "AFFINDA_API_KEY not configured" });
   }
 
-  // Vercel auto-parses JSON bodies; fall back to manual stream read if needed.
-  let body = req.body;
-  if (!body || typeof body !== "object") {
+  // Vercel auto-parses JSON bodies into req.body; fall back to stream read.
+  let payload = req.body;
+  if (!payload || typeof payload !== "object") {
     try {
       const chunks = [];
-      for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      for await (const chunk of req) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     } catch {
-      return res.status(400).json({ ok: false, error: "Could not parse request body" });
+      return res.status(400).json({ ok: false, error: "Could not parse request body as JSON" });
     }
   }
 
-  const { data: base64, filename = "cv.pdf", mimeType = "application/octet-stream" } = body;
+  const { data: base64, filename = "cv.pdf", mimeType = "application/octet-stream" } = payload;
   if (!base64 || typeof base64 !== "string") {
-    return res.status(400).json({ ok: false, error: "Missing field: data (base64 file content)" });
+    return res.status(400).json({ ok: false, error: "Missing field: data (base64 file)" });
   }
 
   try {
     const fileBuffer = Buffer.from(base64, "base64");
-    const boundary   = `--NW${Date.now()}`;
-    const CRLF       = "\r\n";
 
-    // Build multipart/form-data manually (no Blob/FormData dependency)
-    const body = Buffer.concat([
-      // workspace field
-      Buffer.from(`--${boundary}${CRLF}Content-Disposition: form-data; name="workspace"${CRLF}${CRLF}1007732${CRLF}`),
-      // documentType field
-      Buffer.from(`--${boundary}${CRLF}Content-Disposition: form-data; name="documentType"${CRLF}${CRLF}1058304${CRLF}`),
-      // file field
-      Buffer.from(`--${boundary}${CRLF}Content-Disposition: form-data; name="file"; filename="${filename}"${CRLF}Content-Type: ${mimeType}${CRLF}${CRLF}`),
+    // RFC 2046 multipart/form-data — boundary must NOT include leading "--"
+    const bnd  = `NearworkBnd${Date.now()}`;
+    const CRLF = "\r\n";
+
+    // Helper: text field part
+    const textPart = (name, value) =>
+      `--${bnd}${CRLF}Content-Disposition: form-data; name="${name}"${CRLF}${CRLF}${value}${CRLF}`;
+
+    const multipart = Buffer.concat([
+      Buffer.from(textPart("workspace",    "1007732")),
+      Buffer.from(textPart("documentType", "1058304")),
+      // File part header
+      Buffer.from(
+        `--${bnd}${CRLF}` +
+        `Content-Disposition: form-data; name="file"; filename="${filename}"${CRLF}` +
+        `Content-Type: ${mimeType}${CRLF}${CRLF}`
+      ),
+      // Raw file bytes
       fileBuffer,
-      Buffer.from(`${CRLF}--${boundary}--${CRLF}`),
+      // Closing boundary (CRLF after binary content + closing delimiter)
+      Buffer.from(`${CRLF}--${bnd}--${CRLF}`),
     ]);
 
     const affRes = await fetch("https://api.affinda.com/v3/documents", {
       method: "POST",
       headers: {
         Authorization:    `Bearer ${key}`,
-        "Content-Type":   `multipart/form-data; boundary=${boundary}`,
-        "Content-Length": String(body.length),
+        "Content-Type":   `multipart/form-data; boundary=${bnd}`,
+        "Content-Length": String(multipart.length),
       },
-      body,
+      body: multipart,
     });
 
     if (!affRes.ok) {
-      const txt = await affRes.text().catch(() => "");
-      console.error("[parse-cv] Affinda error", affRes.status, txt.slice(0, 300));
-      return res.status(502).json({ ok: false, error: `Affinda returned ${affRes.status}` });
+      const errText = await affRes.text().catch(() => "");
+      console.error("[parse-cv] Affinda HTTP", affRes.status, errText.slice(0, 400));
+      return res.status(502).json({ ok: false, error: `Affinda returned ${affRes.status}`, detail: errText.slice(0, 200) });
     }
 
     const json = await affRes.json().catch(() => null);
@@ -95,6 +100,6 @@ export default async function handler(req, res) {
 
   } catch (e) {
     console.error("[parse-cv] error:", e?.message || String(e));
-    return res.status(500).json({ ok: false, error: "Internal error" });
+    return res.status(500).json({ ok: false, error: "Internal error: " + (e?.message || "") });
   }
 }
