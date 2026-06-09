@@ -48,13 +48,24 @@ export default async function handler(req, res) {
     });
     const colBody = await colRes.json().catch(() => null);
 
+    // Fetch details for each document type listed in the workspace
+    const wsDocTypes = wsBody?.documentTypes || [];
+    const docTypeDetails = await Promise.all(
+      wsDocTypes.map(async (dtId) => {
+        const r = await fetch(`https://api.us1.affinda.com/v3/documentTypes/${dtId}`, {
+          headers: { Authorization: `Bearer ${key.trim()}` },
+        });
+        const b = await r.json().catch(() => null);
+        return { id: dtId, status: r.status, name: b?.name, identifier: b?.identifier, body: b };
+      })
+    );
+
     return res.status(200).json({
       ok: true,
       step: "auth_ok",
       keyInfo,
       workspace: { status: wsRes.status, body: wsBody },
-      documentTypes: { status: dtRes.status, body: dtBody },
-      collections: { status: colRes.status, body: colBody },
+      docTypeDetails,
     });
   } catch (e) {
     return res.status(200).json({ ok: false, step: "fetch", keyInfo, error: e?.message });
