@@ -1102,11 +1102,12 @@ function _onbStepHtml(step) {
           <p class="eyebrow">Step 1 · Your CV</p>
           <h2 class="onb-heading">Upload your CV to get started</h2>
           <p class="onb-sub">We'll extract your experience, skills, and contact info automatically — so you don't have to type it all out.</p>
-          <div class="upload-box" style="margin-bottom:4px;">
-            <input id="onbCvInput" type="file" accept=".pdf,.doc,.docx" />
-            <p style="font-size:11px;color:var(--light);margin:6px 0 0;text-align:center;">PDF or Word · max 10 MB</p>
+          <div class="upload-box" style="margin-bottom:4px;" id="onbCvBox">
+            <input id="onbCvInput" type="file" accept=".pdf,.doc,.docx" style="display:none;" />
+            <label for="onbCvInput" class="upload-trigger">${icon("upload")} Choose file</label>
+            <p id="onbCvStatus" style="font-size:12px;color:var(--green);min-height:18px;margin:0;">${hasFile ? `✓ ${escapeHtml(_onbCvFile.name)}` : ""}</p>
+            <p>PDF or Word · max 10 MB</p>
           </div>
-          <p id="onbCvStatus" style="font-size:12px;color:var(--green);min-height:18px;margin:4px 0 0;">${hasFile ? `✓ ${escapeHtml(_onbCvFile.name)}` : ""}</p>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:24px;">
             <button type="button" id="onbSkipCv" style="background:none;border:none;font-size:13px;color:var(--light);cursor:pointer;text-decoration:underline;padding:0;">Skip — I'll fill in manually</button>
             <button type="button" id="onbNext" class="primary-action" ${hasFile ? "" : "disabled"}>Continue →</button>
@@ -1977,6 +1978,31 @@ function renderProfile() {
   return renderProfileForm("profile");
 }
 
+// ─── Work history entry row (used in profile form) ────────────────────────────
+function workEntryHtml(index, entry = {}) {
+  const i = index;
+  return `
+    <div class="work-entry" data-work-index="${i}" style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;position:relative;">
+      <button type="button" class="remove-work-entry" data-remove="${i}" style="position:absolute;top:10px;right:12px;background:none;border:none;font-size:16px;color:var(--light);cursor:pointer;line-height:1;padding:2px 4px;" aria-label="Remove">×</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
+        <label style="display:grid;gap:4px;font-size:11px;font-weight:700;color:var(--mid);letter-spacing:.04em;">Job title
+          <input type="text" class="work-field" data-field="title" value="${escapeAttr(entry.title || "")}" placeholder="e.g. Customer Success Manager" style="min-height:38px;font-size:13px;" />
+        </label>
+        <label style="display:grid;gap:4px;font-size:11px;font-weight:700;color:var(--mid);letter-spacing:.04em;">Company
+          <input type="text" class="work-field" data-field="company" value="${escapeAttr(entry.company || "")}" placeholder="e.g. Acme Corp" style="min-height:38px;font-size:13px;" />
+        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end;">
+        <label style="display:grid;gap:4px;font-size:11px;font-weight:700;color:var(--mid);letter-spacing:.04em;">From (YYYY-MM)
+          <input type="text" class="work-field" data-field="from" value="${escapeAttr(entry.from || "")}" placeholder="2021-03" style="min-height:38px;font-size:13px;" />
+        </label>
+        <label style="display:grid;gap:4px;font-size:11px;font-weight:700;color:var(--mid);letter-spacing:.04em;">To (YYYY-MM or "present")
+          <input type="text" class="work-field" data-field="to" value="${escapeAttr(entry.to || "")}" placeholder="present" style="min-height:38px;font-size:13px;" />
+        </label>
+      </div>
+    </div>`;
+}
+
 function renderProfileForm(mode = "profile") {
   const skills = candidateSkills();
   const location = selectedLocation();
@@ -2068,6 +2094,14 @@ function renderProfileForm(mode = "profile") {
           <input name="profileCvLabel" type="text" placeholder="CV label, e.g. Customer Success CV" />
         </div>
         <label class="wide">Summary <span class="optional-label">optional</span><textarea name="summary" placeholder="Add a short note about what you do best.">${state.candidate?.summary || ""}</textarea></label>
+        <div class="profile-card wide" id="workHistoryCard">
+          <div class="field-label">Work experience <span class="optional-label">optional</span></div>
+          <p class="field-hint">Add your previous roles so recruiters can see your background.</p>
+          <div id="workEntries">
+            ${(state.candidate?.workHistory || []).map((w, i) => workEntryHtml(i, w)).join("")}
+          </div>
+          <button type="button" id="addWorkEntry" class="secondary-action" style="margin-top:12px;width:auto;padding:0 16px;min-height:36px;font-size:12px;">${icon("plus")} Add position</button>
+        </div>
         <input type="hidden" name="mode" value="${mode}" />
         <button class="primary-action fit" type="submit">${icon("save")} ${mode === "onboarding" ? "Finish setup" : "Save profile"}</button>
       </form>
@@ -2274,6 +2308,7 @@ function bindDashboardEvents() {
   bindOnboardingWizardEvents();
   bindSkillSearch();
   bindCvAutofill();
+  bindWorkHistoryEditor();
   document.querySelectorAll("[data-apply]").forEach((button) => {
     button.addEventListener("click", async () => {
       const job = state.jobs.map(normalizeRole).find((item) => item.code === button.dataset.apply);
@@ -2514,11 +2549,15 @@ function bindDashboardEvents() {
           cvUrl: cv.url,           // synced to candidates collection so Admin can see the file
           cvLibrary: [...(state.candidate?.cvLibrary || []), cv]
         } : {}),
-        // Merge Affinda-parsed work history — always for new candidates, only when
-        // the "rewrite" toggle is ON for returning candidates.
-        ...(_cvParsedData?.workHistory?.length && (_cvOverwrite || !state.candidate?.workHistory?.length)
-          ? { workHistory: _cvParsedData.workHistory }
-          : {})
+        // Work history: prefer manual entries from the editor when present;
+        // fall back to Affinda-parsed data (always for new, only on rewrite for returning).
+        workHistory: (() => {
+          const manual = collectWorkHistory();
+          if (manual.length) return manual;
+          if (_cvParsedData?.workHistory?.length && (_cvOverwrite || !state.candidate?.workHistory?.length))
+            return _cvParsedData.workHistory;
+          return state.candidate?.workHistory || [];
+        })()
       };
       _cvParsedData = null; _cvOverwrite = false; // consumed — reset for next upload
       const result = await updateCandidateProfile(state.user.uid, enrichedData);
@@ -2567,6 +2606,40 @@ function bindDashboardEvents() {
 //                  locked until Affinda finishes (or the user clicks "skip").
 // RETURNING CANDIDATE — form shows normally. Uploading a new CV reveals a
 //                  toggle "Update my profile from this CV" (default: off).
+
+// ─── Work history editor (profile page) ──────────────────────────────────────
+// Manages add/remove of work experience rows in the profile form.
+// Entries are read from the DOM on form submit via collectWorkHistory().
+
+function bindWorkHistoryEditor() {
+  const container = document.querySelector("#workHistoryCard");
+  if (!container) return;
+  let nextIndex = container.querySelectorAll(".work-entry").length;
+
+  container.addEventListener("click", (e) => {
+    // Remove entry
+    const removeBtn = e.target.closest(".remove-work-entry");
+    if (removeBtn) {
+      removeBtn.closest(".work-entry")?.remove();
+      return;
+    }
+    // Add entry
+    if (e.target.closest("#addWorkEntry")) {
+      const entries = document.querySelector("#workEntries");
+      if (!entries) return;
+      const div = document.createElement("div");
+      div.innerHTML = workEntryHtml(nextIndex++, {});
+      entries.appendChild(div.firstElementChild);
+    }
+  });
+}
+
+function collectWorkHistory() {
+  return [...document.querySelectorAll(".work-entry")].map((row) => {
+    const f = (field) => row.querySelector(`[data-field="${field}"]`)?.value?.trim() || "";
+    return { title: f("title"), company: f("company"), from: f("from"), to: f("to") };
+  }).filter((w) => w.title || w.company);
+}
 
 function bindCvAutofill() {
   const form    = document.querySelector("#profileForm");
@@ -2707,13 +2780,30 @@ function _applyParsedToForm(parsed, overwrite) {
       if (overwrite) wrap.innerHTML = "";
       const existing = new Set([...wrap.querySelectorAll('input[name="skills"]')].map((i) => i.value.toLowerCase()));
       wrap.querySelector(".skill-empty")?.remove();
-      parsed.skills.forEach((skill) => {
+      // Canonicalize skill names so they match our picker vocabulary
+      const canonical = [...new Set(parsed.skills.map(canonicalSkillName).filter(Boolean))];
+      canonical.forEach((skill) => {
         if (existing.has(skill.toLowerCase())) return;
         existing.add(skill.toLowerCase());
         const span = document.createElement("span");
         span.className = "selected-skill";
-        span.innerHTML = `${escapeHtml(skill)}<button type="button" data-skill="${escapeAttr(skill)}">&times;</button><input type="hidden" name="skills" value="${escapeAttr(skill)}" />`;
+        span.setAttribute("data-skill-chip", skill);
+        span.innerHTML = `${escapeHtml(skill)}<button type="button" class="skill-remove" data-remove-skill="${escapeAttr(skill)}" aria-label="Remove ${escapeAttr(skill)}">×</button><input type="hidden" name="skills" value="${escapeAttr(skill)}" />`;
         wrap.appendChild(span);
+      });
+    }
+  }
+
+  // Populate the work history editor with Affinda-extracted entries
+  if (parsed.workHistory?.length) {
+    const entries = document.querySelector("#workEntries");
+    if (entries) {
+      if (overwrite) entries.innerHTML = "";
+      let idx = entries.querySelectorAll(".work-entry").length;
+      parsed.workHistory.forEach((w) => {
+        const div = document.createElement("div");
+        div.innerHTML = workEntryHtml(idx++, w);
+        entries.appendChild(div.firstElementChild);
       });
     }
   }

@@ -50,7 +50,7 @@ export default async function handler(req, res) {
     if (!d) return res.status(200).json({ ok: true, name: "", phone: "", city: "", summary: "", skills: [], workHistory: [] });
 
     const name    = d.name?.raw || [d.name?.first, d.name?.last].filter(Boolean).join(" ") || "";
-    const phone   = d.phoneNumbers?.[0]?.value || "";
+    const phone   = d.phoneNumbers?.[0]?.rawText || d.phoneNumbers?.[0]?.value || "";
     const city    = d.location?.city || "";
     const summary = typeof d.summary === "string" ? d.summary.slice(0, 800) : "";
     const skills  = (d.skills || []).map((s) => s.name).filter(Boolean);

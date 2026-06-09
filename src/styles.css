@@ -374,10 +374,30 @@ select {
   color: #111111;
 }
 
+/* Checkboxes and radios must NOT inherit the full-width / tall-height rules */
+input[type="checkbox"],
+input[type="radio"] {
+  width: auto;
+  min-height: auto;
+  min-width: auto;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  flex-shrink: 0;
+}
+
 input:focus,
 select:focus {
   outline: 3px solid rgba(22, 160, 133, 0.08);
   border-color: var(--purple);
+}
+
+input[type="checkbox"]:focus,
+input[type="radio"]:focus {
+  outline: none;
+  border: none;
 }
 
 .primary-action,
@@ -2273,18 +2293,47 @@ img.avatar {
 }
 
 .upload-box {
-  display: grid;
-  justify-items: start;
-  gap: 10px;
-  padding: 22px;
-  border: 1px dashed var(--purple);
-  border-radius: 12px;
-  background: var(--purple-pale);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 28px 20px;
+  border: 1.5px dashed var(--green);
+  border-radius: 14px;
+  background: rgba(22,160,133,.04);
+  text-align: center;
+  cursor: pointer;
+}
+
+/* Hide the native file input; the label acts as the click target */
+.upload-box input[type="file"] {
+  position: absolute;
+  opacity: 0;
+  width: 0.1px;
+  height: 0.1px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.upload-box label.upload-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--green);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 9px 18px;
+  cursor: pointer;
+  border: none;
 }
 
 .upload-box p {
   margin: 0;
-  color: var(--gray-5);
+  color: var(--light);
+  font-size: 11px;
 }
 
 .cv-list {
