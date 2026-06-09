@@ -3197,54 +3197,36 @@ function _bindNewCandidateCvGate(form, cvInput) {
   });
 }
 
-// ── Returning candidate: toggle below the CV file input ──────────────────────
+// ── Returning candidate: auto-apply on file select (no checkbox needed) ───────
 
 function _bindReturnCandidateCvToggle(cvInput) {
-  cvInput.addEventListener("change", () => {
+  cvInput.addEventListener("change", async () => {
     const file = cvInput.files?.[0];
     if (!file) return;
 
     _cvParsedData = null;
     _cvOverwrite  = false;
-    document.querySelector("#cvRewriteWrap")?.remove();
     document.querySelector("#cvParseHint")?.remove();
 
-    // Kick off parsing in background so it's ready when toggle is turned on
-    const parsedPromise = parseCvWithAffinda(file);
+    // Show "Analysing…" status inside the CV card
+    const hint = document.createElement("p");
+    hint.id = "cvParseHint";
+    hint.style.cssText = "font-size:12.5px;font-weight:600;color:var(--green);margin:10px 0 0;";
+    hint.textContent = "Analysing your CV…";
+    cvInput.insertAdjacentElement("afterend", hint);
 
-    const wrap = document.createElement("div");
-    wrap.id = "cvRewriteWrap";
-    wrap.style.cssText = "margin-top:8px;";
-    wrap.innerHTML = `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--mid);"><input type="checkbox" id="cvRewriteCheck" style="accent-color:var(--green);width:14px;height:14px;" /> Update my profile information from this CV</label>`;
-    cvInput.insertAdjacentElement("afterend", wrap);
+    const parsed = await parseCvWithAffinda(file);
 
-    document.querySelector("#cvRewriteCheck").addEventListener("change", async (e) => {
-      document.querySelector("#cvParseHint")?.remove();
+    if (!parsed) {
+      hint.style.color = "var(--mid)";
+      hint.textContent = "Could not extract data from this CV. The file will still be saved.";
+      return;
+    }
 
-      if (!e.target.checked) {
-        _cvParsedData = null;
-        _cvOverwrite  = false;
-        return;
-      }
-
-      const hint = document.createElement("p");
-      hint.id = "cvParseHint";
-      hint.style.cssText = "font-size:12px;color:var(--green);margin:4px 0 0;";
-      hint.textContent = "Analysing your CV…";
-      wrap.insertAdjacentElement("afterend", hint);
-
-      const parsed = await parsedPromise;
-
-      if (!parsed) {
-        hint.textContent = "Could not extract data from this CV. The file will still be saved.";
-        return;
-      }
-
-      _cvParsedData = parsed;
-      _cvOverwrite  = true;
-      _applyParsedToForm(parsed, true);
-      _showCvParseBanner(parsed, cvInput);
-    });
+    _cvParsedData = parsed;
+    _cvOverwrite  = true;
+    _applyParsedToForm(parsed, true);
+    _showCvParseBanner(parsed, cvInput);
   });
 }
 
