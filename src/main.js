@@ -2265,49 +2265,84 @@ function renderProfile() {
   return renderProfileForm("profile");
 }
 
-// ─── Work history entry row (used in profile form) ────────────────────────────
+// ─── V2 profile form helpers ─────────────────────────────────────────────────
+
+function pfLabel(text, optional = false) {
+  return `<span class="pf-label">${text}${optional ? `<span class="pf-optional">optional</span>` : ""}</span>`;
+}
+
+function pfCardHead(iconName, title, badge = "") {
+  return `
+    <div class="pf-card-head">
+      <div class="pf-card-icon">${icon(iconName)}</div>
+      <div class="pf-card-title">${title}</div>
+      ${badge ? `<span class="pf-card-badge">${badge}</span>` : ""}
+    </div>`;
+}
+
 function workEntryHtml(index, entry = {}) {
   const i = index;
+  const companyInitial = (entry.company || "?")[0].toUpperCase();
   return `
-    <div class="work-entry" data-work-index="${i}" style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;position:relative;">
-      <button type="button" class="remove-work-entry" data-remove="${i}" style="position:absolute;top:10px;right:12px;background:none;border:none;font-size:16px;color:var(--light);cursor:pointer;line-height:1;padding:2px 4px;" aria-label="Remove">×</button>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
-        <label style="display:grid;gap:4px;font-size:11px;font-weight:700;color:var(--mid);letter-spacing:.04em;">Job title
-          <input type="text" class="work-field" data-field="title" value="${escapeAttr(entry.title || "")}" placeholder="e.g. Customer Success Manager" style="min-height:38px;font-size:13px;" />
-        </label>
-        <label style="display:grid;gap:4px;font-size:11px;font-weight:700;color:var(--mid);letter-spacing:.04em;">Company
-          <input type="text" class="work-field" data-field="company" value="${escapeAttr(entry.company || "")}" placeholder="e.g. Acme Corp" style="min-height:38px;font-size:13px;" />
-        </label>
+    <div class="pf-sub-card work-entry" data-work-index="${i}">
+      <div class="pf-sub-card-left">
+        <div class="pf-work-avatar">${companyInitial}</div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end;">
-        <label style="display:grid;gap:4px;font-size:11px;font-weight:700;color:var(--mid);letter-spacing:.04em;">From (YYYY-MM)
-          <input type="text" class="work-field" data-field="from" value="${escapeAttr(entry.from || "")}" placeholder="2021-03" style="min-height:38px;font-size:13px;" />
-        </label>
-        <label style="display:grid;gap:4px;font-size:11px;font-weight:700;color:var(--mid);letter-spacing:.04em;">To (YYYY-MM or "present")
-          <input type="text" class="work-field" data-field="to" value="${escapeAttr(entry.to || "")}" placeholder="present" style="min-height:38px;font-size:13px;" />
-        </label>
+      <div class="pf-sub-card-body">
+        <div class="pf-field-row">
+          <label class="pf-field">
+            ${pfLabel("Job title")}
+            <input type="text" class="pf-input work-field" data-field="title" value="${escapeAttr(entry.title || "")}" placeholder="e.g. Customer Success Manager" />
+          </label>
+          <label class="pf-field">
+            ${pfLabel("Company")}
+            <input type="text" class="pf-input work-field" data-field="company" value="${escapeAttr(entry.company || "")}" placeholder="e.g. Acme Corp" />
+          </label>
+        </div>
+        <div class="pf-field-row pf-field-row--3">
+          <label class="pf-field">
+            ${pfLabel("From")}
+            <input type="text" class="pf-input work-field" data-field="from" value="${escapeAttr(entry.from || "")}" placeholder="2021-03" />
+          </label>
+          <label class="pf-field">
+            ${pfLabel("To")}
+            <input type="text" class="pf-input work-field" data-field="to" value="${escapeAttr(entry.to || "")}" placeholder="present" />
+          </label>
+          <div></div>
+        </div>
       </div>
+      <button type="button" class="pf-remove-btn remove-work-entry" data-remove="${i}" aria-label="Remove">
+        ${icon("x")}
+      </button>
     </div>`;
 }
 
 function certEntryHtml(index, entry = {}) {
   const i = index;
   return `
-    <div class="cert-entry" data-cert-index="${i}" style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;position:relative;">
-      <button type="button" class="remove-cert-entry" data-remove="${i}" style="position:absolute;top:10px;right:12px;background:none;border:none;font-size:16px;color:var(--light);cursor:pointer;line-height:1;padding:2px 4px;" aria-label="Remove">×</button>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
-        <label style="display:grid;gap:4px;font-size:11px;font-weight:700;color:var(--mid);letter-spacing:.04em;">Certificate / Course
-          <input type="text" class="cert-field" data-field="name" value="${escapeAttr(entry.name || "")}" placeholder="e.g. Google Data Analytics" style="min-height:38px;font-size:13px;" />
-        </label>
-        <label style="display:grid;gap:4px;font-size:11px;font-weight:700;color:var(--mid);letter-spacing:.04em;">Issuing organisation <span style="font-weight:400;opacity:.6;">optional</span>
-          <input type="text" class="cert-field" data-field="issuer" value="${escapeAttr(entry.issuer || "")}" placeholder="e.g. Coursera, HubSpot" style="min-height:38px;font-size:13px;" />
+    <div class="pf-sub-card cert-entry" data-cert-index="${i}">
+      <div class="pf-sub-card-left">
+        <div class="pf-cert-icon">✓</div>
+      </div>
+      <div class="pf-sub-card-body">
+        <div class="pf-field-row">
+          <label class="pf-field">
+            ${pfLabel("Certificate / Course")}
+            <input type="text" class="pf-input cert-field" data-field="name" value="${escapeAttr(entry.name || "")}" placeholder="e.g. Google Analytics" />
+          </label>
+          <label class="pf-field">
+            ${pfLabel("Issuer", true)}
+            <input type="text" class="pf-input cert-field" data-field="issuer" value="${escapeAttr(entry.issuer || "")}" placeholder="e.g. Coursera, HubSpot" />
+          </label>
+        </div>
+        <label class="pf-field" style="max-width:200px;">
+          ${pfLabel("Date (YYYY-MM)", true)}
+          <input type="text" class="pf-input cert-field" data-field="date" value="${escapeAttr(entry.date || "")}" placeholder="2023-06" />
         </label>
       </div>
-      <div style="max-width:200px;">
-        <label style="display:grid;gap:4px;font-size:11px;font-weight:700;color:var(--mid);letter-spacing:.04em;">Date (YYYY-MM) <span style="font-weight:400;opacity:.6;">optional</span>
-          <input type="text" class="cert-field" data-field="date" value="${escapeAttr(entry.date || "")}" placeholder="2023-06" style="min-height:38px;font-size:13px;" />
-        </label>
-      </div>
+      <button type="button" class="pf-remove-btn remove-cert-entry" data-remove="${i}" aria-label="Remove">
+        ${icon("x")}
+      </button>
     </div>`;
 }
 
@@ -2319,112 +2354,209 @@ function renderProfileForm(mode = "profile") {
   const normalizedSalary = normalizeSalaryValue(state.candidate?.salaryAmount || state.candidate?.salary || state.candidate?.salaryUSD, salaryCurrency);
   const roleGroup = selectedRoleGroup();
   const selectedRole = state.candidate?.targetRole || state.candidate?.headline || "";
+  const completion = profileCompletion();
+  const checklist = profileChecklist();
+  const done = checklist.filter(c => c.done).length;
+
   return `
-    <section class="section-block">
-      <div class="section-heading"><div><p class="eyebrow">${mode === "onboarding" ? "Setup" : "Profile"}</p><h2>${mode === "onboarding" ? "Complete your account" : "Improve your match quality"}</h2></div><span class="profile-score">${profileCompletion()}%</span></div>
-      <form id="profileForm" class="profile-form">
-        <div class="profile-card profile-identity wide">
-          ${avatarMarkup("large")}
-          <label>Profile photo <span class="optional-label">optional</span>
-            <input name="photo" type="file" accept="image/png,image/jpeg,image/webp" />
-          </label>
+    <div class="pf-page">
+
+      <!-- Page header -->
+      <div class="pf-page-header">
+        <div>
+          <div class="pf-page-overline">${mode === "onboarding" ? "Setup" : "Candidate profile"}</div>
+          <h1 class="pf-page-title">${mode === "onboarding" ? "Let's build your profile." : "Improve your match quality."}</h1>
         </div>
-        <label class="wide">Full name<input name="name" value="${escapeAttr(state.candidate?.name || state.user?.displayName || "")}" /></label>
-        <div class="profile-card wide">
-          <div class="field-label">Role applying for</div>
-          <div class="profile-card-grid">
-            <label>Area
-              <select name="roleGroup" id="roleGroupSelect">
+        <div class="pf-completion-badge">
+          <svg viewBox="0 0 40 40" class="pf-completion-ring">
+            <circle cx="20" cy="20" r="16" fill="none" stroke="#EBEBEB" stroke-width="3"/>
+            <circle cx="20" cy="20" r="16" fill="none" stroke="#16A085" stroke-width="3"
+              stroke-dasharray="${(2*Math.PI*16).toFixed(1)}"
+              stroke-dashoffset="${(2*Math.PI*16*(1-completion/100)).toFixed(1)}"
+              stroke-linecap="round" transform="rotate(-90 20 20)"/>
+          </svg>
+          <span class="pf-completion-pct">${completion}%</span>
+        </div>
+      </div>
+
+      <!-- Progress bar -->
+      <div class="pf-progress-bar">
+        <div class="pf-progress-fill" style="width:${completion}%;"></div>
+      </div>
+      <div class="pf-progress-label">${done} of ${checklist.length} sections complete</div>
+
+      <form id="profileForm" class="pf-form">
+
+        <!-- ── Identity ── -->
+        <div class="pf-card">
+          ${pfCardHead("user-round", "Identity")}
+          <div class="pf-identity-row">
+            <div class="pf-avatar-upload">
+              ${avatarMarkup("large")}
+              <label class="pf-photo-btn">
+                ${icon("camera")} Change photo
+                <input name="photo" type="file" accept="image/png,image/jpeg,image/webp" style="display:none;" />
+              </label>
+            </div>
+            <div class="pf-field" style="flex:1;">
+              ${pfLabel("Full name")}
+              <input class="pf-input" name="name" value="${escapeAttr(state.candidate?.name || state.user?.displayName || "")}" placeholder="Your full name" />
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Role ── -->
+        <div class="pf-card">
+          ${pfCardHead("briefcase-business", "Role applying for")}
+          <div class="pf-field-row">
+            <label class="pf-field">
+              ${pfLabel("Area")}
+              <select class="pf-input" name="roleGroup" id="roleGroupSelect">
                 ${roleGroupOptions(roleGroup)}
               </select>
             </label>
-            <label>Role
-              <select name="targetRole" id="targetRoleSelect">
+            <label class="pf-field">
+              ${pfLabel("Target role")}
+              <select class="pf-input" name="targetRole" id="targetRoleSelect">
                 ${roleOptionsForGroup(roleGroup, selectedRole)}
               </select>
             </label>
           </div>
         </div>
-        <div class="profile-card wide">
-          <div class="field-label">Location</div>
-          <div class="profile-card-grid">
-            <label>Department
-              <select name="department" id="departmentSelect">
-                ${Object.keys(locationCatalog).map((department) => `<option value="${escapeAttr(department)}" ${department === location.department ? "selected" : ""}>${department}</option>`).join("")}
+
+        <!-- ── Location ── -->
+        <div class="pf-card">
+          ${pfCardHead("map-pin", "Location")}
+          <div class="pf-field-row">
+            <label class="pf-field">
+              ${pfLabel("Department")}
+              <select class="pf-input" name="department" id="departmentSelect">
+                ${Object.keys(locationCatalog).map((dept) => `<option value="${escapeAttr(dept)}" ${dept === location.department ? "selected" : ""}>${dept}</option>`).join("")}
               </select>
             </label>
-            <label>City
-              <select name="city" id="citySelect">
+            <label class="pf-field">
+              ${pfLabel("City")}
+              <select class="pf-input" name="city" id="citySelect">
                 ${cities.map((city) => `<option value="${escapeAttr(city)}" ${city === location.city ? "selected" : ""}>${city}</option>`).join("")}
               </select>
             </label>
           </div>
         </div>
-        <div class="profile-card wide">
-          <div class="field-label">Compensation and English</div>
-          <div class="profile-card-grid">
-            <label>Target monthly salary
-              <div class="salary-field"><select id="salaryCurrencyInput" name="salaryCurrency"><option value="USD" ${normalizedSalary.salaryCurrency === "USD" ? "selected" : ""}>USD</option><option value="COP" ${normalizedSalary.salaryCurrency === "COP" ? "selected" : ""}>COP</option></select><input id="salaryInput" name="salary" value="${escapeAttr(normalizedSalary.salary || "")}" inputmode="numeric" placeholder="1000" /></div>
+
+        <!-- ── Compensation ── -->
+        <div class="pf-card">
+          ${pfCardHead("banknote", "Compensation & English")}
+          <div class="pf-field-row pf-field-row--3">
+            <label class="pf-field">
+              ${pfLabel("Target monthly salary")}
+              <div class="pf-salary-wrap">
+                <select id="salaryCurrencyInput" name="salaryCurrency" class="pf-currency-select">
+                  <option value="USD" ${normalizedSalary.salaryCurrency === "USD" ? "selected" : ""}>USD</option>
+                  <option value="COP" ${normalizedSalary.salaryCurrency === "COP" ? "selected" : ""}>COP</option>
+                </select>
+                <input class="pf-input pf-salary-input" id="salaryInput" name="salary" value="${escapeAttr(normalizedSalary.salary || "")}" inputmode="numeric" placeholder="2,500" />
+              </div>
             </label>
-            <label>English level<select name="english">${["", "B1", "B2", "C1", "C2", "Native"].map((level) => `<option value="${level}" ${state.candidate?.english === level ? "selected" : ""}>${level || "Select level"}</option>`).join("")}</select></label>
-            <label>Other languages <span class="optional-label">optional</span>
-              <input name="languages" value="${escapeAttr((state.candidate?.languages || []).join(", "))}" placeholder="e.g. Spanish, Portuguese, French" />
+            <label class="pf-field">
+              ${pfLabel("English level")}
+              <select class="pf-input" name="english">
+                ${["", "B1", "B2", "C1", "C2", "Native"].map((level) => `<option value="${level}" ${state.candidate?.english === level ? "selected" : ""}>${level || "Select level"}</option>`).join("")}
+              </select>
+            </label>
+            <label class="pf-field">
+              ${pfLabel("Other languages", true)}
+              <input class="pf-input" name="languages" value="${escapeAttr((state.candidate?.languages || []).join(", "))}" placeholder="Spanish, French…" />
             </label>
           </div>
         </div>
-        <div class="profile-card wide">
-          <div class="field-label">Contact</div>
-          <div class="profile-card-grid">
-            <label>WhatsApp number
-              <input name="whatsapp" value="${escapeAttr(state.candidate?.whatsapp || state.candidate?.phone || "")}" inputmode="tel" autocomplete="tel" placeholder="+57 300 123 4567" required />
+
+        <!-- ── Contact ── -->
+        <div class="pf-card">
+          ${pfCardHead("phone", "Contact")}
+          <div class="pf-field-row">
+            <label class="pf-field">
+              ${pfLabel("WhatsApp number")}
+              <input class="pf-input" name="whatsapp" value="${escapeAttr(state.candidate?.whatsapp || state.candidate?.phone || "")}" inputmode="tel" autocomplete="tel" placeholder="+57 300 123 4567" required />
             </label>
-            <label>LinkedIn <span class="optional-label">optional</span>
-              <input name="linkedin" value="${escapeAttr(state.candidate?.linkedin || "")}" placeholder="https://linkedin.com/in/..." />
+            <label class="pf-field">
+              ${pfLabel("LinkedIn", true)}
+              <input class="pf-input" name="linkedin" value="${escapeAttr(state.candidate?.linkedin || "")}" placeholder="https://linkedin.com/in/…" />
             </label>
           </div>
         </div>
-        <div class="profile-card wide">
-          <div class="field-label">Skills</div>
-          <p class="field-hint">Search for skills and add everything that applies to your experience.</p>
+
+        <!-- ── Skills ── -->
+        <div class="pf-card">
+          ${pfCardHead("sparkles", "Skills", skills.length ? `${skills.length} added` : "")}
+          <p class="pf-hint">Search for skills and add everything that applies to your experience.</p>
           ${skillSearchMarkup(skills)}
         </div>
-        <div class="profile-card wide" id="profileCvCard">
-          <div class="field-label">CV</div>
-          <p class="field-hint">Upload the CV you want Nearwork to use for your applications.</p>
+
+        <!-- ── CV ── -->
+        <div class="pf-card" id="profileCvCard">
+          ${pfCardHead("file-text", "CV")}
+          <p class="pf-hint">Upload the CV you want Nearwork to use for your applications.</p>
           ${state.candidate?.activeCvName || state.candidate?.cvUrl ? `
-            <div class="cv-item" style="border:1px solid var(--border);border-radius:10px;margin-bottom:4px;">
-              ${icon("file-text")}
-              <div>
-                <strong>${state.candidate.activeCvName || "CV on file"}</strong>
-                <span>Currently saved · select a new file below to replace</span>
+            <div class="pf-cv-current">
+              <div class="pf-cv-icon">${icon("file-text")}</div>
+              <div class="pf-cv-info">
+                <strong>${escapeHtml(state.candidate.activeCvName || "CV on file")}</strong>
+                <span>Currently active · upload below to replace</span>
               </div>
-              ${state.candidate.cvUrl ? `<a href="${state.candidate.cvUrl}" target="_blank" rel="noreferrer">Open</a>` : ""}
-            </div>
-          ` : ""}
-          <input name="profileCv" type="file" accept=".pdf,.doc,.docx" />
-          <input name="profileCvLabel" type="text" placeholder="CV label, e.g. Customer Success CV" />
+              ${state.candidate.cvUrl ? `<a class="pf-cv-open" href="${escapeAttr(state.candidate.cvUrl)}" target="_blank" rel="noreferrer">${icon("external-link")} Open</a>` : ""}
+            </div>` : ""}
+          <label class="pf-file-label">
+            ${icon("upload")} Choose file (.pdf, .doc, .docx)
+            <input name="profileCv" type="file" accept=".pdf,.doc,.docx" style="display:none;" />
+          </label>
+          <label class="pf-field" style="margin-top:10px;">
+            ${pfLabel("CV label", true)}
+            <input class="pf-input" name="profileCvLabel" type="text" placeholder="e.g. Customer Success CV" />
+          </label>
         </div>
-        <label class="wide">Summary <span class="optional-label">optional</span><textarea name="summary" placeholder="Add a short note about what you do best.">${state.candidate?.summary || ""}</textarea></label>
-        <div class="profile-card wide" id="workHistoryCard">
-          <div class="field-label">Work experience <span class="optional-label">optional</span></div>
-          <p class="field-hint">Add your previous roles so recruiters can see your background.</p>
-          <div id="workEntries">
+
+        <!-- ── Summary ── -->
+        <div class="pf-card">
+          ${pfCardHead("align-left", "Summary", "optional")}
+          <textarea class="pf-input pf-textarea" name="summary" placeholder="Add a short note about what you do best — 2–3 sentences.">${escapeHtml(state.candidate?.summary || "")}</textarea>
+        </div>
+
+        <!-- ── Work history ── -->
+        <div class="pf-card" id="workHistoryCard">
+          ${pfCardHead("building-2", "Work experience", "optional")}
+          <p class="pf-hint">Add your previous roles so recruiters can see your background.</p>
+          <div id="workEntries" class="pf-entries">
             ${(state.candidate?.workHistory || []).map((w, i) => workEntryHtml(i, w)).join("")}
           </div>
-          <button type="button" id="addWorkEntry" class="secondary-action" style="margin-top:12px;width:auto;padding:0 16px;min-height:36px;font-size:12px;">${icon("plus")} Add position</button>
+          <button type="button" id="addWorkEntry" class="pf-add-btn">
+            ${icon("plus")} Add position
+          </button>
         </div>
-        <div class="profile-card wide" id="certCard">
-          <div class="field-label">Certifications &amp; courses <span class="optional-label">optional</span></div>
-          <p class="field-hint">Add any certificates, licences, or courses relevant to your work.</p>
-          <div id="certEntries">
+
+        <!-- ── Certifications ── -->
+        <div class="pf-card" id="certCard">
+          ${pfCardHead("graduation-cap", "Certifications &amp; courses", "optional")}
+          <p class="pf-hint">Add certificates, licences, or courses relevant to your work.</p>
+          <div id="certEntries" class="pf-entries">
             ${(state.candidate?.certifications || []).map((c, i) => certEntryHtml(i, c)).join("")}
           </div>
-          <button type="button" id="addCertEntry" class="secondary-action" style="margin-top:12px;width:auto;padding:0 16px;min-height:36px;font-size:12px;">${icon("plus")} Add certificate</button>
+          <button type="button" id="addCertEntry" class="pf-add-btn">
+            ${icon("plus")} Add certificate
+          </button>
         </div>
+
         <input type="hidden" name="mode" value="${mode}" />
-        <button class="primary-action fit" type="submit">${icon("save")} ${mode === "onboarding" ? "Finish setup" : "Save profile"}</button>
+
+        <!-- Save -->
+        <div class="pf-footer">
+          <button class="pf-save-btn" type="submit">
+            ${icon("save")} ${mode === "onboarding" ? "Finish setup" : "Save profile"}
+          </button>
+          <span class="pf-footer-hint">Changes save to your profile instantly.</span>
+        </div>
+
       </form>
-    </section>
+    </div>
   `;
 }
 
