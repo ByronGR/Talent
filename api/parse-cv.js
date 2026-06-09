@@ -182,7 +182,10 @@ export default async function handler(req, res) {
       })
       .filter((c) => c.name);
 
-    return res.status(200).json({ ok: true, name, phone, city, summary, skills, workHistory, languages, certifications });
+    // Temporary: expose top-level keys so client can identify the skills field
+    const _topKeys = Object.keys(d).sort();
+
+    return res.status(200).json({ ok: true, name, phone, city, summary, skills, workHistory, languages, certifications, _topKeys });
 
   } catch (e) {
     console.error("[parse-cv] error:", e?.message || String(e));
