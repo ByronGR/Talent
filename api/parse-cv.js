@@ -86,18 +86,19 @@ export default async function handler(req, res) {
     const city    = d.location?.city || "";
     const summary = (typeof d.summary === "string" ? d.summary : d.summary?.raw || "").slice(0, 800);
 
-    // Log actual top-level keys from Affinda so we can verify field names
+    // Log actual top-level keys AND the first work experience entry so we can fix the field mapping
     console.log("[parse-cv] Affinda data keys:", Object.keys(d).sort().join(", "));
-    console.log("[parse-cv] skills raw (first 2):", JSON.stringify((d.skills || d.Skills || []).slice(0, 2)));
-    console.log("[parse-cv] workExperience raw (first 1):", JSON.stringify((d.workExperience || d.work_experience || d.WorkExperience || []).slice(0, 1)));
-    console.log("[parse-cv] certifications raw (first 1):", JSON.stringify((d.certifications || d.Certifications || []).slice(0, 1)));
+    const rawWorkExp = d.workExperience || d.work_experience || d.WorkExperience || [];
+    if (rawWorkExp[0]) {
+      console.log("[parse-cv] workExp[0] keys:", Object.keys(rawWorkExp[0]).join(", "));
+      console.log("[parse-cv] workExp[0] full:", JSON.stringify(rawWorkExp[0]));
+    }
 
     // Strip trailing punctuation/whitespace that Affinda sometimes includes
     const cleanSkill = (s) => String(s || "").replace(/[,.\s]+$/, "").replace(/^[,.\s]+/, "").trim();
 
     // Try both camelCase and snake_case variants Affinda may use
     const rawSkills      = d.skills         || d.Skills         || [];
-    const rawWorkExp     = d.workExperience  || d.work_experience || d.WorkExperience  || [];
     const rawLanguages   = d.languages       || d.Languages      || [];
     const rawCerts       = d.certifications  || d.Certifications || [];
 
@@ -133,7 +134,8 @@ export default async function handler(req, res) {
       workExpCount: rawWorkExp.length,
       certsCount: rawCerts.length,
       skillsSample: rawSkills.slice(0, 3),
-      workExpSample: rawWorkExp.slice(0, 1),
+      workExpFirstEntry: rawWorkExp[0] || null,   // full first entry so we can see exact field names
+      workExpFirstEntryKeys: rawWorkExp[0] ? Object.keys(rawWorkExp[0]) : [],
     };
 
     return res.status(200).json({ ok: true, name, phone, city, summary, skills, workHistory, languages, certifications, _debug });
