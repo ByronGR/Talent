@@ -8,7 +8,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  const key = process.env.AFFINDA_API_KEY;
+  const key = (process.env.AFFINDA_API_KEY || "").trim();
   if (!key) {
     return res.status(500).json({ ok: false, error: "AFFINDA_API_KEY not configured" });
   }
