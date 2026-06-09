@@ -837,44 +837,145 @@ async function loadPublicPage() {
   });
 }
 
+// ─── V2 nav sections (grouped for the new sidebar) ───────────────────────────
+function navSections() {
+  return [
+    { label: "My journey", items: [
+      ["overview",     "layout-dashboard",  "Overview"],
+      ["applications", "send",              "Applications"],
+      ["assessment",   "clipboard-check",   "Assessment"],
+    ]},
+    { label: "My search", items: [
+      ["matches", "briefcase-business", "Matches"],
+      ["cvs",     "files",              "CV Picker"],
+    ]},
+    { label: "Support", items: [
+      ["tips",      "book-open",       "Tips"],
+      ["recruiter", "calendar-days",   "Recruiter"],
+      ["profile",   "user-round-cog",  "Profile"],
+    ]},
+  ];
+}
+
+function availabilityLabel() {
+  return { open: "Open to roles", interviewing: "Interviewing", paused: "Not looking" }[state.candidate?.availability || "open"] || "Open to roles";
+}
+
+function profileChecklist() {
+  const c = state.candidate || {};
+  const skills = candidateSkills();
+  return [
+    { id: "name",     label: "Full name",    done: Boolean(c.name) },
+    { id: "role",     label: "Target role",  done: Boolean(c.targetRole || (!isPlaceholderRole(c.headline) && c.headline)) },
+    { id: "location", label: "City",         done: Boolean(c.city) },
+    { id: "salary",   label: "Salary",       done: Boolean(c.salaryAmount || c.salary) },
+    { id: "english",  label: "English",      done: Boolean(c.english) },
+    { id: "whatsapp", label: "WhatsApp",     done: Boolean(c.whatsapp || c.phone) },
+    { id: "skills",   label: "Skills (3+)",  done: skills.length >= 3 },
+    { id: "cv",       label: "CV",           done: Boolean(c.cvUrl) },
+  ];
+}
+
 function renderDashboard() {
   const unreadNotifications = (state.notifications || []).filter((item) => !item.read).length;
+  const avail = state.candidate?.availability || "open";
+  const availDotColors = { open: "#16A085", interviewing: "#EAB308", paused: "#9E9E9E" };
+  const dotColor = availDotColors[avail] || "#16A085";
+  const name = state.candidate?.name || state.user?.displayName || "Talent member";
+  const headline = state.candidate?.headline || state.candidate?.targetRole || "Nearwork candidate";
+
   app.innerHTML = `
-    <main class="dashboard">
-      <aside class="sidebar">
-        <div class="brand-top"><button class="wordmark wordmark-button" type="button" data-dashboard-home>Near<span>work</span></button></div>
-        <div class="candidate-card">
+    <main class="nw-dashboard">
+
+      <!-- ── Sidebar ── -->
+      <aside class="nw-sidebar">
+        <!-- Logo -->
+        <button class="nw-logo" type="button" data-dashboard-home>
+          <div class="nw-logo-box">N<div class="nw-logo-bar"></div></div>
+          <div>
+            <div class="nw-logo-name">Nearwork</div>
+            <div class="nw-logo-sub">Talent portal</div>
+          </div>
+        </button>
+
+        <!-- Profile card -->
+        <div class="nw-sidebar-profile">
           ${avatarMarkup()}
-          <strong>${state.candidate?.name || state.user?.displayName || "Talent member"}</strong>
-          <span>${state.candidate?.headline || state.candidate?.targetRole || "Nearwork candidate"}</span>
+          <div class="nw-sidebar-profile-text">
+            <div class="nw-sidebar-profile-name">${escapeHtml(name)}</div>
+            <div class="nw-sidebar-profile-role">${escapeHtml(headline)}</div>
+          </div>
         </div>
-        <nav>
-          ${navItems().map(([key, iconName, label]) => `
-            <button class="${state.activePage === key ? "active" : ""}" data-page="${key}">${icon(iconName)} ${label}</button>
+
+        <!-- Nav sections -->
+        <nav class="nw-sidebar-nav">
+          ${navSections().map(sec => `
+            <div class="nw-nav-group">
+              <div class="nw-nav-group-label">${sec.label}</div>
+              ${sec.items.map(([key, iconName, label]) => `
+                <button class="nw-nav-item${state.activePage === key ? " active" : ""}" data-page="${key}" type="button">
+                  ${icon(iconName)} ${label}
+                </button>
+              `).join("")}
+            </div>
           `).join("")}
-          <a class="sidebar-jobs-link" href="https://jobs.nearwork.co" target="_blank" rel="noreferrer">${icon("external-link")} Browse Jobs</a>
+          <div class="nw-nav-group">
+            <a class="nw-nav-item nw-nav-external" href="https://jobs.nearwork.co" target="_blank" rel="noreferrer">
+              ${icon("external-link")} Browse jobs
+            </a>
+          </div>
         </nav>
-        <button id="${state.user ? "signOut" : "signIn"}" class="ghost-action">${icon(state.user ? "log-out" : "log-in")} ${state.user ? "Sign out" : "Sign in"}</button>
+
+        <!-- Sign out -->
+        <button id="${state.user ? "signOut" : "signIn"}" class="nw-sidebar-signout" type="button">
+          ${icon(state.user ? "log-out" : "log-in")} ${state.user ? "Sign out" : "Sign in"}
+        </button>
       </aside>
-      <section class="workspace">
-        <header class="topbar">
-          <div><p class="eyebrow">Candidate workspace</p><h1>${pageTitle()}</h1></div>
-          <div class="topbar-actions">
-            <div class="notification-wrap">
-              <button class="icon-action" type="button" id="notificationBell" aria-label="Notifications">${icon("bell")}${unreadNotifications ? `<span>${unreadNotifications}</span>` : ""}</button>
+
+      <!-- ── Main workspace ── -->
+      <section class="nw-workspace">
+
+        <!-- Top bar -->
+        <div class="nw-topbar">
+          <div class="nw-topbar-search">
+            ${icon("search")}
+            <input class="nw-search-input" placeholder="Search roles, companies, skills…" tabindex="-1" />
+          </div>
+          <div class="nw-topbar-right">
+            <!-- Availability pill (wraps the real select for functionality) -->
+            <div class="nw-avail-pill">
+              <span class="nw-avail-dot" style="background:${dotColor};box-shadow:0 0 0 3px ${dotColor}26;"></span>
+              <span class="nw-avail-label">${availabilityLabel()}</span>
+              ${icon("chevron-down")}
+              <select id="availability" class="nw-avail-select" aria-label="Availability">
+                <option value="open"         ${avail === "open"         ? "selected" : ""}>Open to roles</option>
+                <option value="interviewing" ${avail === "interviewing" ? "selected" : ""}>Interviewing</option>
+                <option value="paused"       ${avail === "paused"       ? "selected" : ""}>Not looking</option>
+              </select>
+            </div>
+
+            <!-- Notifications -->
+            <div class="nw-notif-wrap">
+              <button class="nw-icon-btn" type="button" id="notificationBell" aria-label="Notifications">
+                ${icon("bell")}
+                ${unreadNotifications ? `<span class="nw-notif-badge"></span>` : ""}
+              </button>
               ${state.notificationPanelOpen ? renderNotificationPanel() : ""}
             </div>
-            <button class="icon-action" type="button" id="notificationSettings" aria-label="Notification settings">${icon("settings")}</button>
-            <label class="availability">Availability
-              <select id="availability">
-                ${["open", "interviewing", "paused"].map((value) => `<option value="${value}" ${state.candidate?.availability === value ? "selected" : ""}>${value}</option>`).join("")}
-              </select>
-            </label>
+            <button class="nw-icon-btn" type="button" id="notificationSettings" aria-label="Settings">
+              ${icon("settings")}
+            </button>
           </div>
-        </header>
+        </div>
+
+        <!-- Notification settings -->
         ${state.notificationSettingsOpen ? renderNotificationSettings() : ""}
-        ${state.message ? `<div class="notice">${state.message}</div>` : ""}
-        ${(() => { try { return renderActivePage(); } catch (err) { console.error("renderActivePage error:", err); return `<div class="notice">Page failed to render. <button type="button" data-page="overview">Go to overview</button></div>`; } })()}
+
+        <!-- Page content -->
+        ${state.message ? `<div class="notice" style="margin:0 36px;">${state.message}</div>` : ""}
+        <div class="nw-page-content">
+          ${(() => { try { return renderActivePage(); } catch (err) { console.error("renderActivePage error:", err); return `<div class="notice">Page failed to render. <button type="button" data-page="overview">Go to overview</button></div>`; } })()}
+        </div>
       </section>
     </main>
   `;
@@ -1001,26 +1102,211 @@ function renderActivePage() {
 }
 
 function renderOverview() {
-  const complete = isProfileComplete();
-  const hasPipeline = candidateHasPipeline();
-  const activeOpenings = state.jobs.length;
+  const completion  = profileCompletion();
+  const checklist   = profileChecklist();
+  const done        = checklist.filter(c => c.done).length;
+  const total       = checklist.length;
+  const apps        = state.applications || [];
+  const actionsNeeded = apps.filter(a => ["action-needed", "interview-scheduled", "assessment-sent"].includes(String(a.status || "").toLowerCase())).length;
+  const jobs        = (state.jobs || []).slice(0, 3);
+  const recruiter   = state.candidate?.recruiter || {};
+
+  // SVG donut: r=52, circumference≈326.7
+  const circ    = 2 * Math.PI * 52;
+  const offset  = circ * (1 - completion / 100);
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+
+  const statTile = (label, value, sub, color, iconName) => `
+    <div class="nw-stat-tile">
+      <div class="nw-stat-tile-top">
+        <span class="nw-stat-tile-label">${label}</span>
+        <div class="nw-stat-icon" style="background:${color}14;">
+          ${icon(iconName)}
+        </div>
+      </div>
+      <div class="nw-stat-value">${value}</div>
+      <div class="nw-stat-sub">${sub}</div>
+    </div>`;
+
+  const appRow = (app, isLast) => {
+    const stages   = ["Applied", "Assessment", "Interview", "Final round", "Offer"];
+    const rawStage = String(app.stage || app.status || "applied").toLowerCase();
+    const stageIdx = rawStage.includes("offer") ? 4 : rawStage.includes("final") ? 3 : rawStage.includes("interview") ? 2 : rawStage.includes("assessment") ? 1 : 0;
+    const company  = app.clientName || app.company || "Nearwork client";
+    const initials = company.split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase();
+    const companyColors = ["#16A085", "#AF7AC5", "#E74C7C", "#3B82F6", "#EAB308"];
+    const bg = companyColors[company.length % companyColors.length];
+    return `
+      <div class="nw-app-row${isLast ? " last" : ""}">
+        <div class="nw-app-avatar" style="background:${bg};">${initials}</div>
+        <div class="nw-app-info">
+          <div class="nw-app-title">${escapeHtml(app.jobTitle || app.title || "Application")} <span class="nw-app-company">· ${escapeHtml(company)}</span></div>
+          <div class="nw-app-stages">
+            ${stages.map((s, i) => `<div class="nw-stage-pip${i <= stageIdx ? " done" : ""}"></div>`).join("")}
+            <span class="nw-app-stage-label">${app.stage || app.status || "Applied"}</span>
+          </div>
+        </div>
+        <div class="nw-app-meta">
+          <span class="nw-app-status${actionsNeeded ? " action" : ""}">${app.status || "In review"}</span>
+          <div class="nw-app-date">${formatDate(app.updatedAt || app.createdAt)}</div>
+        </div>
+        ${icon("chevron-right")}
+      </div>`;
+  };
+
+  const matchCard = (job) => {
+    const role   = normalizeRole(job);
+    const matched = matchingSkillsForJob(role);
+    const score  = role.match || (matched.length >= 3 ? Math.min(97, 70 + matched.length * 4) : null);
+    const companyColors = ["#16A085", "#AF7AC5", "#E74C7C", "#3B82F6"];
+    const bg = companyColors[role.orgName.length % companyColors.length];
+    const initials = role.orgName.split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase();
+    const openingUrl = `https://jobs.nearwork.co/apply?code=${encodeURIComponent(role.code)}`;
+    return `
+      <div class="nw-match-card">
+        <div class="nw-match-card-top">
+          <div class="nw-match-avatar" style="background:${bg};">${initials}</div>
+          ${score ? `<div class="nw-match-score">${score}%</div>` : ""}
+        </div>
+        <div class="nw-match-role">${escapeHtml(role.title)}</div>
+        <div class="nw-match-company">${escapeHtml(role.orgName)} · ${escapeHtml(role.location)}</div>
+        ${matched.length ? `<div class="nw-match-why">${matched.slice(0,3).map(escapeHtml).join(" · ")} match</div>` : `<div class="nw-match-why">${escapeHtml(role.description).slice(0, 80)}…</div>`}
+        <div class="nw-match-footer">
+          <span class="nw-match-salary">${escapeHtml(role.compensation)}</span>
+          <a href="${openingUrl}" target="_blank" rel="noreferrer" class="nw-match-apply">Apply ${icon("arrow-right")}</a>
+        </div>
+      </div>`;
+  };
+
   return `
-    ${complete ? "" : `
-      <section class="hero-card">
-        <div><p class="eyebrow">Action needed</p><h2>Finish your profile to unlock matches.</h2><p>Add your role, city, salary, and skills so Nearwork can match you to the right openings.</p></div>
-        <button class="primary-action fit" type="button" data-page="profile">${icon("arrow-right")} Complete profile</button>
+    <!-- Greeting -->
+    <div class="nw-overview-header">
+      <div class="nw-overview-date">Overview · ${dateStr}</div>
+      <h1 class="nw-overview-greeting">
+        Hi ${escapeHtml(firstName())},
+        ${actionsNeeded > 0
+          ? `<span class="nw-greeting-muted">you have</span> <span class="nw-greeting-accent">${actionsNeeded} thing${actionsNeeded > 1 ? "s" : ""}</span> <span class="nw-greeting-muted">that need you.</span>`
+          : `<span class="nw-greeting-muted">let's get you matched.</span>`}
+      </h1>
+    </div>
+
+    <!-- Readiness card -->
+    <div class="nw-readiness-card">
+      <div class="nw-readiness-donut">
+        <svg viewBox="0 0 120 120" style="width:100%;height:100%;transform:rotate(-90deg);">
+          <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="8"/>
+          <circle cx="60" cy="60" r="52" fill="none" stroke="#16A085" stroke-width="8"
+            stroke-dasharray="${circ.toFixed(1)}" stroke-dashoffset="${offset.toFixed(1)}"
+            stroke-linecap="round"/>
+        </svg>
+        <div class="nw-readiness-pct">
+          <span class="nw-readiness-num">${completion}<span class="nw-readiness-pct-sign">%</span></span>
+          <span class="nw-readiness-ready">ready</span>
+        </div>
+      </div>
+      <div class="nw-readiness-body">
+        <div class="nw-readiness-overline">Profile readiness</div>
+        <h2 class="nw-readiness-title">${done >= total ? "Your profile is complete — you're ready to match." : `${total - done} more step${total - done > 1 ? "s" : ""} and Nearwork can boost your matches.`}</h2>
+        <div class="nw-readiness-checklist">
+          ${checklist.map(c => `
+            <div class="nw-check-pill${c.done ? " done" : ""}">
+              ${icon(c.done ? "check" : "circle")} ${c.label}
+            </div>`).join("")}
+        </div>
+        <div class="nw-readiness-actions">
+          <button class="nw-finish-btn" type="button" data-page="profile">
+            ${done >= total ? "View profile" : "Finish profile"} ${icon("arrow-right")}
+          </button>
+          <span class="nw-readiness-count">${done} of ${total} complete</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stat tiles -->
+    <div class="nw-stat-grid">
+      ${statTile("Open matches",  state.jobs.length,               state.jobs.length ? `${state.jobs.length} role${state.jobs.length > 1 ? "s" : ""} waiting`    : "Complete profile to unlock", "#16A085", "sparkles")}
+      ${statTile("Applications",  apps.length,                     apps.length ? `${actionsNeeded || "0"} need your input`                                        : "Not applied yet",             "#AF7AC5", "send")}
+      ${statTile("Interviews",    apps.filter(a => String(a.stage || a.status || "").toLowerCase().includes("interview")).length, "Scheduled",                               "Not yet scheduled",            "#E74C7C", "calendar-clock")}
+      ${statTile("CVs saved",     (state.candidate?.cvLibrary || []).length, "In your library",                                                                   "Upload your first CV",         "#555555", "files")}
+    </div>
+
+    <!-- Pipeline + side rail -->
+    <div class="nw-split">
+      <!-- Active pipeline -->
+      <section class="nw-panel">
+        <div class="nw-panel-head">
+          <div>
+            <div class="nw-panel-overline">Now</div>
+            <div class="nw-panel-title">Your active pipeline</div>
+          </div>
+          ${apps.length ? `<button class="nw-ghost-btn" type="button" data-page="applications">All applications ${icon("arrow-right")}</button>` : ""}
+        </div>
+        ${apps.length
+          ? apps.slice(0, 4).map((app, i) => appRow(app, i === Math.min(apps.length, 4) - 1)).join("")
+          : `<div class="nw-empty">
+              ${icon("briefcase")}
+              <strong>No active pipeline yet</strong>
+              <p>Browse openings and apply — we'll show your pipeline here once an application moves forward.</p>
+              <div style="display:flex;gap:8px;margin-top:12px;">
+                <button class="nw-btn-primary" type="button" data-page="matches">${icon("sparkles")} View matches</button>
+                <a class="nw-btn-secondary" href="https://jobs.nearwork.co" target="_blank" rel="noreferrer">${icon("external-link")} Open jobs</a>
+              </div>
+            </div>`}
       </section>
-    `}
-    <section class="summary-grid">
-      ${metricCard("Profile readiness", `${profileCompletion()}%`, "sparkles")}
-      ${metricCard("Open roles", activeOpenings, "briefcase-business")}
-      ${metricCard("Applications", state.applications.length, "send")}
-      ${metricCard("CVs saved", (state.candidate?.cvLibrary || []).length, "files")}
-    </section>
-    <section class="content-grid">
-      <div class="section-block"><div class="section-heading"><div><p class="eyebrow">Now</p><h2>${hasPipeline ? "Talent pipeline" : "Find your next opening"}</h2></div></div>${hasPipeline ? pipelineView(currentStage()) : noPipelineView()}</div>
-      <div class="section-block compact"><div class="section-heading"><div><p class="eyebrow">Recruiter</p><h2>Need help?</h2></div></div>${recruiterCard()}</div>
-    </section>
+
+      <!-- Side rail -->
+      <div class="nw-side-rail">
+        <!-- Activity -->
+        <section class="nw-panel">
+          <div class="nw-panel-head">
+            <div>
+              <div class="nw-panel-overline">Recent</div>
+              <div class="nw-panel-title">Updates</div>
+            </div>
+          </div>
+          <div class="nw-empty" style="padding:20px 0;">
+            ${icon("bell")}
+            <strong>Nothing yet</strong>
+            <p>Movement on your search lands here.</p>
+          </div>
+        </section>
+
+        <!-- Recruiter card (dark) -->
+        <section class="nw-recruiter-dark">
+          <div class="nw-recruiter-overline">Your talent partner</div>
+          <div class="nw-recruiter-row">
+            <div class="nw-recruiter-avatar">${recruiter.initials || "NW"}</div>
+            <div>
+              <div class="nw-recruiter-name">${escapeHtml(recruiter.name || "Nearwork Support")}</div>
+              <div class="nw-recruiter-role">${escapeHtml(recruiter.role || "Talent Partner")}</div>
+            </div>
+          </div>
+          <p class="nw-recruiter-bio">I'll review every match and prep you before each interview. Reach out anytime.</p>
+          <div class="nw-recruiter-btns">
+            <a class="nw-recruiter-msg" href="mailto:${escapeAttr(recruiter.email || "support@nearwork.co")}">${icon("message-square-text")} Message</a>
+            <a class="nw-recruiter-call" href="https://wa.me/${encodeURIComponent((recruiter.whatsapp || "+1").replace(/\D/g, ""))}" target="_blank" rel="noreferrer">${icon("calendar-plus")} WhatsApp</a>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- Top matches -->
+    ${jobs.length ? `
+      <section class="nw-matches-section">
+        <div class="nw-panel-head">
+          <div>
+            <div class="nw-panel-overline">Picked for you</div>
+            <div class="nw-panel-title">Top matches this week</div>
+          </div>
+          <button class="nw-ghost-btn" type="button" data-page="matches">See all ${icon("arrow-right")}</button>
+        </div>
+        <div class="nw-match-grid">
+          ${jobs.map(j => matchCard(j)).join("")}
+        </div>
+      </section>
+    ` : ""}
   `;
 }
 
