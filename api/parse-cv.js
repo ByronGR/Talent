@@ -44,7 +44,8 @@ export default async function handler(req, res) {
       `--${bnd}${CRLF}Content-Disposition: form-data; name="${name}"${CRLF}${CRLF}${value}${CRLF}`;
 
     const multipart = Buffer.concat([
-      Buffer.from(textPart("workspace", "iKIEtiBE")),
+      Buffer.from(textPart("workspace",    "iKIEtiBE")),
+      Buffer.from(textPart("documentType", "rcqSyqXA")),  // Resume Parser collection
       // File part header
       Buffer.from(
         `--${bnd}${CRLF}` +
