@@ -48,15 +48,30 @@ export default async function handler(req, res) {
     });
     const colBody = await colRes.json().catch(() => null);
 
-    // Fetch details for each document type listed in the workspace
+    // The workspace lists documentType identifiers — probe each as a `collection`
+    // upload to find which one corresponds to "Resume Parser"
+    const tinyPdf = "JVBERi0xLjQKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFI+PgplbmRvYmoKMiAwIG9iago8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PgplbmRvYmoKMyAwIG9iago8PC9UeXBlL1BhZ2UvUGFyZW50IDIgMCBSL01lZGlhQm94WzAgMCA2MTIgNzkyXT4+CmVuZG9iagp4cmVmCjAgNAowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCnRyYWlsZXI8PC9TaXplIDQvUm9vdCAxIDAgUj4+CnN0YXJ0eHJlZgoxODcKJSVFT0Y=";
     const wsDocTypes = wsBody?.documentTypes || [];
-    const docTypeDetails = await Promise.all(
-      wsDocTypes.map(async (dtId) => {
-        const r = await fetch(`https://api.us1.affinda.com/v3/documentTypes/${dtId}`, {
-          headers: { Authorization: `Bearer ${key.trim()}` },
+
+    const probeResults = await Promise.all(
+      wsDocTypes.map(async (colId) => {
+        const bnd = `NWProbe${Date.now()}${colId}`;
+        const CRLF = "\r\n";
+        const tp = (n, v) => `--${bnd}${CRLF}Content-Disposition: form-data; name="${n}"${CRLF}${CRLF}${v}${CRLF}`;
+        const fileBuf = Buffer.from(tinyPdf, "base64");
+        const body = Buffer.concat([
+          Buffer.from(tp("collection", colId)),
+          Buffer.from(`--${bnd}${CRLF}Content-Disposition: form-data; name="file"; filename="probe.pdf"${CRLF}Content-Type: application/pdf${CRLF}${CRLF}`),
+          fileBuf,
+          Buffer.from(`${CRLF}--${bnd}--${CRLF}`),
+        ]);
+        const r = await fetch("https://api.us1.affinda.com/v3/documents", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${key.trim()}`, "Content-Type": `multipart/form-data; boundary=${bnd}` },
+          body,
         });
         const b = await r.json().catch(() => null);
-        return { id: dtId, status: r.status, name: b?.name, identifier: b?.identifier, body: b };
+        return { collection: colId, status: r.status, docType: b?.meta?.documentType?.name || b?.data?.documentType || null, error: r.ok ? null : b };
       })
     );
 
@@ -64,8 +79,8 @@ export default async function handler(req, res) {
       ok: true,
       step: "auth_ok",
       keyInfo,
-      workspace: { status: wsRes.status, body: wsBody },
-      docTypeDetails,
+      workspaceDocTypes: wsDocTypes,
+      probeResults,
     });
   } catch (e) {
     return res.status(200).json({ ok: false, step: "fetch", keyInfo, error: e?.message });
