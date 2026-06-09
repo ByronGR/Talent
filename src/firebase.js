@@ -688,12 +688,6 @@ async function parseCvWithAffinda(file) {
     });
     if (!res.ok) return null;
     const json = await res.json();
-    console.log("[parse-cv] raw API response:", json);
-    if (json._debug) {
-      console.log("[parse-cv] affindaKeys:", json._debug.affindaKeys?.join(", "));
-      console.log("[parse-cv] workExpFirstEntryKeys:", json._debug.workExpFirstEntryKeys?.join(", "));
-      console.log("[parse-cv] workExpFirstEntry:", JSON.stringify(json._debug.workExpFirstEntry, null, 2));
-    }
     if (!json?.ok) return null;
     const { name, phone, city, summary, skills, workHistory, languages, certifications } = json;
     return { name, phone, city, summary, skills, workHistory, languages: languages || [], certifications: certifications || [] };

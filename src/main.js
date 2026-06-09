@@ -3219,7 +3219,6 @@ function _bindReturnCandidateCvToggle(cvInput) {
     setState({ message: "⏳ Analysing your CV — this takes up to 30 seconds…" });
 
     const parsed = await parseCvWithAffinda(file);
-    console.log("[CV autofill] parseCvWithAffinda result:", parsed);
 
     if (!parsed) {
       setState({ message: "⚠️ Could not read your CV. Check the browser console for details, or try a different file." });

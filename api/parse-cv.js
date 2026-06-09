@@ -86,59 +86,58 @@ export default async function handler(req, res) {
     const city    = d.location?.city || "";
     const summary = (typeof d.summary === "string" ? d.summary : d.summary?.raw || "").slice(0, 800);
 
-    // Log actual top-level keys AND the first work experience entry so we can fix the field mapping
-    console.log("[parse-cv] Affinda data keys:", Object.keys(d).sort().join(", "));
-    const rawWorkExp = d.workExperience || d.work_experience || d.WorkExperience || [];
-    if (rawWorkExp[0]) {
-      console.log("[parse-cv] workExp[0] keys:", Object.keys(rawWorkExp[0]).join(", "));
-      console.log("[parse-cv] workExp[0] full:", JSON.stringify(rawWorkExp[0]));
-    }
-
     // Strip trailing punctuation/whitespace that Affinda sometimes includes
     const cleanSkill = (s) => String(s || "").replace(/[,.\s]+$/, "").replace(/^[,.\s]+/, "").trim();
 
-    // Try both camelCase and snake_case variants Affinda may use
-    const rawSkills      = d.skills         || d.Skills         || [];
-    const rawLanguages   = d.languages       || d.Languages      || [];
-    const rawCerts       = d.certifications  || d.Certifications || [];
-
-    const skills = rawSkills
-      .map((s) => cleanSkill(s.name || s.text || s.value || ""))
-      .filter((s) => s.length > 1);
+    // Affinda custom workspaces return entries with a nested `.parsed` object.
+    // Flat fields (e.g. w.jobTitle) are not present — use w.parsed.workExperienceJobTitle.raw etc.
+    const rawWorkExp = d.workExperience || d.work_experience || d.WorkExperience || [];
 
     const workHistory = rawWorkExp
-      .filter((w) => w.jobTitle || w.job_title || w.organization || w.company)
-      .map((w) => ({
-        title:   w.jobTitle    || w.job_title    || "",
-        company: w.organization || w.company     || "",
-        from:    w.dates?.startDate ? String(w.dates.startDate).slice(0, 7) : "",
-        to:      w.dates?.isCurrent ? "present" : (w.dates?.endDate ? String(w.dates.endDate).slice(0, 7) : ""),
-      }));
+      .map((w) => {
+        const p = w.parsed || {};
+        // Nested custom-workspace structure
+        const title   = p.workExperienceJobTitle?.raw    || p.workExperienceJobTitle?.parsed    || w.jobTitle    || w.job_title    || "";
+        const company = p.workExperienceOrganization?.raw || p.workExperienceOrganization?.parsed || w.organization || w.company     || "";
+        const dates   = p.workExperienceDates?.parsed    || p.workExperienceDates               || {};
+        const from    = dates.startDate ? String(dates.startDate).slice(0, 7) : (w.dates?.startDate ? String(w.dates.startDate).slice(0, 7) : "");
+        const isCurr  = dates.isCurrent ?? w.dates?.isCurrent;
+        const to      = isCurr ? "present" : (dates.endDate ? String(dates.endDate).slice(0, 7) : (w.dates?.endDate ? String(w.dates.endDate).slice(0, 7) : ""));
+        return { title, company, from, to };
+      })
+      .filter((w) => w.title || w.company);
 
+    // Skills — try flat array first, then nested parsed structure
+    const rawSkills = d.skills || d.Skills || [];
+    const skills = rawSkills
+      .map((s) => {
+        const nested = s.parsed?.skillsName?.raw || s.parsed?.skillsName?.parsed || "";
+        return cleanSkill(nested || s.name || s.text || s.value || s.raw || "");
+      })
+      .filter((s) => s.length > 1);
+
+    // Languages
+    const rawLanguages = d.languages || d.Languages || [];
     const languages = rawLanguages
-      .map((l) => cleanSkill(l.name || l.rawText || l.value || ""))
+      .map((l) => {
+        const nested = l.parsed?.languagesValue?.raw || l.parsed?.languagesValue?.parsed || "";
+        return cleanSkill(nested || l.name || l.rawText || l.value || l.raw || "");
+      })
       .filter(Boolean);
 
+    // Certifications
+    const rawCerts = d.certifications || d.Certifications || [];
     const certifications = rawCerts
-      .map((c) => ({
-        name:   cleanSkill(c.name || c.rawText || c.value || ""),
-        issuer: c.organization || c.issuer || "",
-        date:   c.completionDate ? String(c.completionDate).slice(0, 7) : "",
-      }))
+      .map((c) => {
+        const p      = c.parsed || {};
+        const cname  = cleanSkill(p.certificationsName?.raw || p.certificationsName?.parsed || c.name || c.rawText || c.value || c.raw || "");
+        const issuer = p.certificationsIssuer?.raw || p.certificationsIssuer?.parsed || c.organization || c.issuer || "";
+        const date   = p.certificationsDate?.raw   || (c.completionDate ? String(c.completionDate).slice(0, 7) : "");
+        return { name: cname, issuer, date };
+      })
       .filter((c) => c.name);
 
-    // Include a debug snapshot so the client can log the actual Affinda structure
-    const _debug = {
-      affindaKeys: Object.keys(d).sort(),
-      skillsCount: rawSkills.length,
-      workExpCount: rawWorkExp.length,
-      certsCount: rawCerts.length,
-      skillsSample: rawSkills.slice(0, 3),
-      workExpFirstEntry: rawWorkExp[0] || null,   // full first entry so we can see exact field names
-      workExpFirstEntryKeys: rawWorkExp[0] ? Object.keys(rawWorkExp[0]) : [],
-    };
-
-    return res.status(200).json({ ok: true, name, phone, city, summary, skills, workHistory, languages, certifications, _debug });
+    return res.status(200).json({ ok: true, name, phone, city, summary, skills, workHistory, languages, certifications });
 
   } catch (e) {
     console.error("[parse-cv] error:", e?.message || String(e));
