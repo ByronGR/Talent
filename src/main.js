@@ -3213,27 +3213,34 @@ function _bindReturnCandidateCvToggle(cvInput) {
     _cvOverwrite   = false;
     _pendingCvFile = null;
 
-    // Show "Analysing…" via the flash message bar (survives any re-render)
-    setState({ message: "⏳ Analysing your CV — filling in your profile in a moment…" });
+    // Inject hint directly — no setState here so the form DOM stays intact during the parse
+    document.querySelector("#cvParseHint")?.remove();
+    const hint = document.createElement("p");
+    hint.id = "cvParseHint";
+    hint.style.cssText = "font-size:12.5px;font-weight:600;color:var(--green);margin:10px 0 0;";
+    hint.textContent = "⏳ Analysing your CV…";
+    cvInput.insertAdjacentElement("afterend", hint);
 
     const parsed = await parseCvWithAffinda(file);
 
     if (!parsed) {
-      setState({ message: "Could not extract data from this CV. The file will still be saved when you click Save." });
+      hint.style.color = "var(--mid)";
+      hint.textContent = "Could not extract data from this CV. The file will still be saved when you click Save.";
       return;
     }
 
     _cvParsedData  = parsed;
     _cvOverwrite   = true;
-    _pendingCvFile = file; // held for the submit handler (file input is cleared on re-render)
+    _pendingCvFile = file; // held so the submit handler can upload it after re-render clears the input
 
-    // Merge parsed data into state.candidate so renderProfileForm pre-fills every field
+    // Merge parsed data into state.candidate and do ONE re-render — renderProfileForm
+    // reads every field from state.candidate so everything appears pre-filled automatically.
     const c = state.candidate || {};
     const mergedCandidate = {
       ...c,
-      ...(parsed.name   ? { name: parsed.name }                       : {}),
-      ...(parsed.phone  ? { whatsapp: parsed.phone, phone: parsed.phone } : {}),
-      ...(parsed.summary ? { summary: parsed.summary }                 : {}),
+      ...(parsed.name    ? { name: parsed.name }                          : {}),
+      ...(parsed.phone   ? { whatsapp: parsed.phone, phone: parsed.phone } : {}),
+      ...(parsed.summary ? { summary: parsed.summary }                     : {}),
       skills:         parsed.skills?.length
         ? [...new Set(parsed.skills.map(canonicalSkillName).filter(Boolean))]
         : c.skills || [],
