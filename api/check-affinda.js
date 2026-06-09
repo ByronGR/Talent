@@ -23,8 +23,10 @@ export default async function handler(req, res) {
       headers: { Authorization: `Bearer ${key.trim()}` },
     });
     const body = await testRes.text().catch(() => "");
-    if (testRes.ok) {
-      return res.status(200).json({ ok: true, step: "auth", keyInfo, workspacesStatus: testRes.status });
+    // 400 validation_error on /workspaces means auth passed but the endpoint
+    // needs an org param — still counts as key valid.
+    if (testRes.ok || testRes.status === 400) {
+      return res.status(200).json({ ok: true, step: "auth_ok", keyInfo, affindaStatus: testRes.status, note: testRes.status === 400 ? "Key valid — 400 just means org param required on this endpoint" : "Key valid" });
     }
     return res.status(200).json({ ok: false, step: "auth", keyInfo, affindaStatus: testRes.status, affindaDetail: body.slice(0, 300) });
   } catch (e) {
