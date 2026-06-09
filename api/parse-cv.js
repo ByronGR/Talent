@@ -89,27 +89,62 @@ export default async function handler(req, res) {
     // Strip trailing punctuation/whitespace that Affinda sometimes includes
     const cleanSkill = (s) => String(s || "").replace(/[,.\s]+$/, "").replace(/^[,.\s]+/, "").trim();
 
-    // Debug: log all top-level keys and work entry parsed keys to identify remaining field names
+    // Debug: log all top-level keys and work entry parsed keys
     console.log("[parse-cv] top-level keys:", Object.keys(d).sort().join(", "));
     const rawWorkExp = d.workExperience || d.work_experience || d.WorkExperience || [];
     if (rawWorkExp[0]) {
       const p0 = rawWorkExp[0].parsed || {};
       console.log("[parse-cv] workEntry.parsed keys:", Object.keys(p0).join(", "));
-      const dateKeys = Object.keys(p0).filter((k) => /date/i.test(k));
-      dateKeys.forEach((k) => console.log(`[parse-cv] ${k}:`, JSON.stringify(p0[k])));
+      Object.keys(p0).filter((k) => /date|current/i.test(k)).forEach((k) =>
+        console.log(`[parse-cv] ${k}:`, JSON.stringify(p0[k]))
+      );
     }
+
+    // Convert "Oct 2023", "2023-10-01", or similar to "YYYY-MM"
+    const MONTHS = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
+    const toYearMonth = (s) => {
+      if (!s) return "";
+      const str = String(s);
+      // ISO date: 2023-10-01 → 2023-10
+      const iso = str.match(/(\d{4})-(\d{2})/);
+      if (iso) return `${iso[1]}-${iso[2]}`;
+      // "Oct 2023" or "October 2023"
+      const mon = str.match(/([a-z]{3})[a-z]*[\s.,]+(\d{4})/i);
+      if (mon) return `${mon[2]}-${String(MONTHS[mon[1].toLowerCase()] || 1).padStart(2, "0")}`;
+      // Just a year: "2023"
+      const yr = str.match(/\b(20\d{2})\b/);
+      if (yr) return `${yr[1]}-01`;
+      return "";
+    };
 
     const workHistory = rawWorkExp
       .map((w) => {
         const p = w.parsed || {};
-        // Nested custom-workspace structure
         const title   = p.workExperienceJobTitle?.raw    || p.workExperienceJobTitle?.parsed    || w.jobTitle    || w.job_title    || "";
         const company = p.workExperienceOrganization?.raw || p.workExperienceOrganization?.parsed || w.organization || w.company     || "";
-        const dates   = p.workExperienceDates?.parsed    || p.workExperienceDates               || {};
-        const from    = dates.startDate ? String(dates.startDate).slice(0, 7) : (w.dates?.startDate ? String(w.dates.startDate).slice(0, 7) : "");
-        const isCurr  = dates.isCurrent ?? w.dates?.isCurrent;
-        const to      = isCurr ? "present" : (dates.endDate ? String(dates.endDate).slice(0, 7) : (w.dates?.endDate ? String(w.dates.endDate).slice(0, 7) : ""));
-        return { title, company, from, to };
+
+        // Dates: try dedicated start/end fields first (Affinda custom workspace naming),
+        // then combined workExperienceDates, then flat w.dates, then parse from raw text
+        const startVal = p.workExperienceStartDate?.raw   || p.workExperienceStartDate?.parsed   ||
+                         p.workExperienceDates?.parsed?.startDate || p.workExperienceDates?.startDate ||
+                         w.dates?.startDate || "";
+        const endVal   = p.workExperienceEndDate?.raw     || p.workExperienceEndDate?.parsed     ||
+                         p.workExperienceDates?.parsed?.endDate   || p.workExperienceDates?.endDate   ||
+                         w.dates?.endDate || "";
+        const isCurrentFlag =
+          p.workExperienceDates?.parsed?.isCurrent ??
+          p.workExperienceDates?.isCurrent ??
+          w.dates?.isCurrent ??
+          (typeof endVal === "string" && /present|current|actualidad/i.test(endVal));
+
+        // Fallback: extract first and second date from the raw entry text
+        const rawText    = w.raw || "";
+        const rawDates   = [...rawText.matchAll(/([A-Z][a-z]{2}\.?\s+\d{4}|\d{4})/g)].map((m) => m[0]);
+        const fromFinal  = toYearMonth(startVal) || toYearMonth(rawDates[0]) || "";
+        const isCurr     = isCurrentFlag || /present|current|actualidad/i.test(rawText.slice(-30));
+        const toFinal    = isCurr && fromFinal ? "present" : (toYearMonth(endVal) || toYearMonth(rawDates[1]) || "");
+
+        return { title, company, from: fromFinal, to: toFinal };
       })
       .filter((w) => w.title || w.company);
 
@@ -131,8 +166,12 @@ export default async function handler(req, res) {
       })
       .filter(Boolean);
 
-    // Certifications
-    const rawCerts = d.certifications || d.Certifications || [];
+    // Debug: log skills and certs counts to identify where data lives
+    console.log("[parse-cv] skills length:", (d.skills || []).length, "certs length:", (d.certifications || []).length, "education length:", (d.education || []).length);
+    if ((d.education || [])[0]) console.log("[parse-cv] education[0]:", JSON.stringify(d.education[0]));
+
+    // Certifications — also check education entries (Affinda sometimes puts certs there)
+    const rawCerts = d.certifications || d.Certifications || d.education || [];
     const certifications = rawCerts
       .map((c) => {
         const p      = c.parsed || {};
