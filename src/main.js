@@ -2505,10 +2505,10 @@ function renderProfileForm(mode = "profile") {
               </div>
               ${state.candidate.cvUrl ? `<a class="pf-cv-open" href="${escapeAttr(state.candidate.cvUrl)}" target="_blank" rel="noreferrer">${icon("external-link")} Open</a>` : ""}
             </div>` : ""}
-          <label class="pf-file-label">
+          <label class="pf-file-label" for="profileCvFileInput">
             ${icon("upload")} Choose file (.pdf, .doc, .docx)
-            <input name="profileCv" type="file" accept=".pdf,.doc,.docx" style="display:none;" />
           </label>
+          <input id="profileCvFileInput" name="profileCv" type="file" accept=".pdf,.doc,.docx" style="display:none;" />
           <label class="pf-field" style="margin-top:10px;">
             ${pfLabel("CV label", true)}
             <input class="pf-input" name="profileCvLabel" type="text" placeholder="e.g. Customer Success CV" />
@@ -3314,6 +3314,9 @@ function _applyParsedToForm(parsed, overwrite) {
       });
     }
   }
+
+  // Re-initialize Lucide icons for any newly injected × buttons
+  syncIcons();
 }
 
 function _showCvParseBanner(parsed, cvInput) {
