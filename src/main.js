@@ -3233,8 +3233,11 @@ function _bindReturnCandidateCvToggle(cvInput) {
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 function _applyParsedToForm(parsed, overwrite) {
+  console.log("[CV autofill] parsed data:", JSON.stringify(parsed, null, 2));
+
   const set = (sel, val) => {
     const el = document.querySelector(sel);
+    console.log(`[CV autofill] set(${sel}):`, el ? "found" : "NOT FOUND", "| val:", val);
     if (el && val && (overwrite || !el.value?.trim())) el.value = val;
   };
   set('input[name="name"]',      parsed.name);
@@ -3243,12 +3246,13 @@ function _applyParsedToForm(parsed, overwrite) {
 
   if (parsed.skills?.length) {
     const wrap = document.querySelector("#selectedSkills");
+    console.log("[CV autofill] #selectedSkills:", wrap ? "found" : "NOT FOUND", "| skills:", parsed.skills);
     if (wrap) {
       if (overwrite) wrap.innerHTML = "";
       const existing = new Set([...wrap.querySelectorAll('input[name="skills"]')].map((i) => i.value.toLowerCase()));
       wrap.querySelector(".skill-empty")?.remove();
-      // Canonicalize skill names so they match our picker vocabulary
       const canonical = [...new Set(parsed.skills.map(canonicalSkillName).filter(Boolean))];
+      console.log("[CV autofill] canonical skills:", canonical);
       canonical.forEach((skill) => {
         if (existing.has(skill.toLowerCase())) return;
         existing.add(skill.toLowerCase());
@@ -3261,43 +3265,44 @@ function _applyParsedToForm(parsed, overwrite) {
     }
   }
 
-  // Populate the work history editor with Affinda-extracted entries
   if (parsed.workHistory?.length) {
     const entries = document.querySelector("#workEntries");
+    console.log("[CV autofill] #workEntries:", entries ? "found" : "NOT FOUND", "| count:", parsed.workHistory.length);
     if (entries) {
       if (overwrite) entries.innerHTML = "";
       let idx = entries.querySelectorAll(".work-entry").length;
       parsed.workHistory.forEach((w) => {
         const div = document.createElement("div");
         div.innerHTML = workEntryHtml(idx++, w);
+        console.log("[CV autofill] work entry firstElementChild:", div.firstElementChild?.className);
         entries.appendChild(div.firstElementChild);
       });
     }
   }
 
-  // Populate languages field
   if (parsed.languages?.length) {
     const langInput = document.querySelector('input[name="languages"]');
+    console.log("[CV autofill] languages input:", langInput ? "found" : "NOT FOUND", "| val:", parsed.languages);
     if (langInput && (overwrite || !langInput.value?.trim())) {
       langInput.value = parsed.languages.join(", ");
     }
   }
 
-  // Populate certifications editor
   if (parsed.certifications?.length) {
     const certEntries = document.querySelector("#certEntries");
+    console.log("[CV autofill] #certEntries:", certEntries ? "found" : "NOT FOUND", "| count:", parsed.certifications.length);
     if (certEntries) {
       if (overwrite) certEntries.innerHTML = "";
       let idx = certEntries.querySelectorAll(".cert-entry").length;
       parsed.certifications.forEach((c) => {
         const div = document.createElement("div");
         div.innerHTML = certEntryHtml(idx++, c);
+        console.log("[CV autofill] cert entry firstElementChild:", div.firstElementChild?.className);
         certEntries.appendChild(div.firstElementChild);
       });
     }
   }
 
-  // Re-initialize Lucide icons for any newly injected × buttons
   syncIcons();
 }
 
