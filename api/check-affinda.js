@@ -72,7 +72,17 @@ export default async function handler(req, res) {
           body,
         });
         const b = await r.json().catch(() => null);
-        return { collection: colId, status: r.status, docType: b?.meta?.documentType?.name || b?.data?.documentType || null, error: r.ok ? null : b };
+        // Return key fields from the response to identify document type name
+        const meta = b?.meta || {};
+        return {
+          id: colId,
+          status: r.status,
+          docTypeName: meta?.collection?.name || meta?.documentType?.name || meta?.extractor?.name || null,
+          metaKeys: Object.keys(meta),
+          metaCollection: meta?.collection,
+          metaExtractor: meta?.extractor,
+          metaDocType: meta?.documentType,
+        };
       })
     );
 
