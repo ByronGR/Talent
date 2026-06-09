@@ -31,8 +31,9 @@ import {
 
 // Holds data extracted by Affinda until the profile form is saved.
 // Reset each time a new CV is selected or the profile form is submitted.
-let _cvParsedData = null;
-let _cvOverwrite  = false; // true for new candidates and returning candidates who toggled "rewrite"
+let _cvParsedData   = null;
+let _cvOverwrite    = false;
+let _pendingCvFile  = null; // CV file held across the setState re-render so submit can upload it
 
 // ─── Onboarding wizard state ──────────────────────────────────────────────────
 let _onbStep         = 1;
@@ -1674,8 +1675,10 @@ async function _onbFinish() {
       phone:                 d.whatsapp || "",
       linkedin:              d.linkedin || "",
       skills:                [...new Set((p.skills || []).map(canonicalSkillName).filter(Boolean))],
-      workHistory:           p.workHistory || [],
-      summary:               p.summary    || "",
+      workHistory:           p.workHistory    || [],
+      certifications:        p.certifications || [],
+      languages:             p.languages      || [],
+      summary:               p.summary        || "",
       email:                 state.candidate?.email || state.user?.email || "",
       candidateCode:         state.candidate?.candidateCode,
       marketingConsent:      state.candidate?.marketingConsent === true,
@@ -2978,12 +2981,14 @@ function bindDashboardEvents() {
 
       // CV upload is non-blocking — a Storage failure must not prevent the
       // rest of the profile (name, salary, skills, etc.) from saving.
-      const cvFile = form.get("profileCv");
+      // _pendingCvFile holds the file when the CV autofill re-render cleared the input element.
+      const cvFile = form.get("profileCv")?.name ? form.get("profileCv") : _pendingCvFile;
       let cv = null;
       let cvUploadFailed = false;
       if (cvFile?.name) {
         try {
-          cv = await uploadCandidateCv(state.user.uid, cvFile, form.get("profileCvLabel"));
+          cv = await uploadCandidateCv(state.user.uid, cvFile, form.get("profileCvLabel") || "");
+          _pendingCvFile = null;
         } catch {
           cvUploadFailed = true;
         }
@@ -3197,62 +3202,81 @@ function _bindNewCandidateCvGate(form, cvInput) {
   });
 }
 
-// ── Returning candidate: auto-apply on file select (no checkbox needed) ───────
+// ── Returning candidate: auto-apply on file select ────────────────────────────
 
 function _bindReturnCandidateCvToggle(cvInput) {
   cvInput.addEventListener("change", async () => {
     const file = cvInput.files?.[0];
     if (!file) return;
 
-    _cvParsedData = null;
-    _cvOverwrite  = false;
-    document.querySelector("#cvParseHint")?.remove();
+    _cvParsedData  = null;
+    _cvOverwrite   = false;
+    _pendingCvFile = null;
 
-    // Show "Analysing…" status inside the CV card
-    const hint = document.createElement("p");
-    hint.id = "cvParseHint";
-    hint.style.cssText = "font-size:12.5px;font-weight:600;color:var(--green);margin:10px 0 0;";
-    hint.textContent = "Analysing your CV…";
-    cvInput.insertAdjacentElement("afterend", hint);
+    // Show "Analysing…" via the flash message bar (survives any re-render)
+    setState({ message: "⏳ Analysing your CV — filling in your profile in a moment…" });
 
     const parsed = await parseCvWithAffinda(file);
 
     if (!parsed) {
-      hint.style.color = "var(--mid)";
-      hint.textContent = "Could not extract data from this CV. The file will still be saved.";
+      setState({ message: "Could not extract data from this CV. The file will still be saved when you click Save." });
       return;
     }
 
-    _cvParsedData = parsed;
-    _cvOverwrite  = true;
-    _applyParsedToForm(parsed, true);
-    _showCvParseBanner(parsed, cvInput);
+    _cvParsedData  = parsed;
+    _cvOverwrite   = true;
+    _pendingCvFile = file; // held for the submit handler (file input is cleared on re-render)
+
+    // Merge parsed data into state.candidate so renderProfileForm pre-fills every field
+    const c = state.candidate || {};
+    const mergedCandidate = {
+      ...c,
+      ...(parsed.name   ? { name: parsed.name }                       : {}),
+      ...(parsed.phone  ? { whatsapp: parsed.phone, phone: parsed.phone } : {}),
+      ...(parsed.summary ? { summary: parsed.summary }                 : {}),
+      skills:         parsed.skills?.length
+        ? [...new Set(parsed.skills.map(canonicalSkillName).filter(Boolean))]
+        : c.skills || [],
+      workHistory:    parsed.workHistory?.length    ? parsed.workHistory    : c.workHistory    || [],
+      certifications: parsed.certifications?.length ? parsed.certifications : c.certifications || [],
+      languages:      parsed.languages?.length      ? parsed.languages      : c.languages      || [],
+    };
+
+    const parts = [];
+    if (parsed.name)                   parts.push("name");
+    if (parsed.phone)                  parts.push("phone");
+    if (parsed.summary)                parts.push("summary");
+    if (parsed.skills?.length)         parts.push(`${parsed.skills.length} skill${parsed.skills.length !== 1 ? "s" : ""}`);
+    if (parsed.workHistory?.length)    parts.push(`${parsed.workHistory.length} role${parsed.workHistory.length !== 1 ? "s" : ""}`);
+    if (parsed.certifications?.length) parts.push(`${parsed.certifications.length} cert${parsed.certifications.length !== 1 ? "s" : ""}`);
+    if (parsed.languages?.length)      parts.push("languages");
+
+    const msg = parts.length
+      ? `✓ Pre-filled from CV: ${parts.join(", ")}. Review and save your profile.`
+      : "✓ CV analysed. Review your profile and save.";
+
+    setState({ candidate: mergedCandidate, message: msg });
   });
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 function _applyParsedToForm(parsed, overwrite) {
-  console.log("[CV autofill] parsed data:", JSON.stringify(parsed, null, 2));
-
   const set = (sel, val) => {
     const el = document.querySelector(sel);
-    console.log(`[CV autofill] set(${sel}):`, el ? "found" : "NOT FOUND", "| val:", val);
     if (el && val && (overwrite || !el.value?.trim())) el.value = val;
   };
-  set('input[name="name"]',      parsed.name);
-  set('input[name="whatsapp"]',  parsed.phone);
+  set('input[name="name"]',       parsed.name);
+  set('input[name="whatsapp"]',   parsed.phone);
   set('textarea[name="summary"]', parsed.summary);
 
   if (parsed.skills?.length) {
     const wrap = document.querySelector("#selectedSkills");
-    console.log("[CV autofill] #selectedSkills:", wrap ? "found" : "NOT FOUND", "| skills:", parsed.skills);
     if (wrap) {
       if (overwrite) wrap.innerHTML = "";
       const existing = new Set([...wrap.querySelectorAll('input[name="skills"]')].map((i) => i.value.toLowerCase()));
       wrap.querySelector(".skill-empty")?.remove();
       const canonical = [...new Set(parsed.skills.map(canonicalSkillName).filter(Boolean))];
-      console.log("[CV autofill] canonical skills:", canonical);
       canonical.forEach((skill) => {
         if (existing.has(skill.toLowerCase())) return;
         existing.add(skill.toLowerCase());
@@ -3267,14 +3291,12 @@ function _applyParsedToForm(parsed, overwrite) {
 
   if (parsed.workHistory?.length) {
     const entries = document.querySelector("#workEntries");
-    console.log("[CV autofill] #workEntries:", entries ? "found" : "NOT FOUND", "| count:", parsed.workHistory.length);
     if (entries) {
       if (overwrite) entries.innerHTML = "";
       let idx = entries.querySelectorAll(".work-entry").length;
       parsed.workHistory.forEach((w) => {
         const div = document.createElement("div");
         div.innerHTML = workEntryHtml(idx++, w);
-        console.log("[CV autofill] work entry firstElementChild:", div.firstElementChild?.className);
         entries.appendChild(div.firstElementChild);
       });
     }
@@ -3282,7 +3304,6 @@ function _applyParsedToForm(parsed, overwrite) {
 
   if (parsed.languages?.length) {
     const langInput = document.querySelector('input[name="languages"]');
-    console.log("[CV autofill] languages input:", langInput ? "found" : "NOT FOUND", "| val:", parsed.languages);
     if (langInput && (overwrite || !langInput.value?.trim())) {
       langInput.value = parsed.languages.join(", ");
     }
@@ -3290,14 +3311,12 @@ function _applyParsedToForm(parsed, overwrite) {
 
   if (parsed.certifications?.length) {
     const certEntries = document.querySelector("#certEntries");
-    console.log("[CV autofill] #certEntries:", certEntries ? "found" : "NOT FOUND", "| count:", parsed.certifications.length);
     if (certEntries) {
       if (overwrite) certEntries.innerHTML = "";
       let idx = certEntries.querySelectorAll(".cert-entry").length;
       parsed.certifications.forEach((c) => {
         const div = document.createElement("div");
         div.innerHTML = certEntryHtml(idx++, c);
-        console.log("[CV autofill] cert entry firstElementChild:", div.firstElementChild?.className);
         certEntries.appendChild(div.firstElementChild);
       });
     }
