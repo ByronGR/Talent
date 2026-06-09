@@ -86,34 +86,57 @@ export default async function handler(req, res) {
     const city    = d.location?.city || "";
     const summary = (typeof d.summary === "string" ? d.summary : d.summary?.raw || "").slice(0, 800);
 
+    // Log actual top-level keys from Affinda so we can verify field names
+    console.log("[parse-cv] Affinda data keys:", Object.keys(d).sort().join(", "));
+    console.log("[parse-cv] skills raw (first 2):", JSON.stringify((d.skills || d.Skills || []).slice(0, 2)));
+    console.log("[parse-cv] workExperience raw (first 1):", JSON.stringify((d.workExperience || d.work_experience || d.WorkExperience || []).slice(0, 1)));
+    console.log("[parse-cv] certifications raw (first 1):", JSON.stringify((d.certifications || d.Certifications || []).slice(0, 1)));
+
     // Strip trailing punctuation/whitespace that Affinda sometimes includes
     const cleanSkill = (s) => String(s || "").replace(/[,.\s]+$/, "").replace(/^[,.\s]+/, "").trim();
-    const skills = (d.skills || [])
-      .map((s) => cleanSkill(s.name || s.text || ""))
+
+    // Try both camelCase and snake_case variants Affinda may use
+    const rawSkills      = d.skills         || d.Skills         || [];
+    const rawWorkExp     = d.workExperience  || d.work_experience || d.WorkExperience  || [];
+    const rawLanguages   = d.languages       || d.Languages      || [];
+    const rawCerts       = d.certifications  || d.Certifications || [];
+
+    const skills = rawSkills
+      .map((s) => cleanSkill(s.name || s.text || s.value || ""))
       .filter((s) => s.length > 1);
 
-    const workHistory = (d.workExperience || [])
-      .filter((w) => w.jobTitle || w.organization)
+    const workHistory = rawWorkExp
+      .filter((w) => w.jobTitle || w.job_title || w.organization || w.company)
       .map((w) => ({
-        title:   w.jobTitle     || "",
-        company: w.organization || "",
+        title:   w.jobTitle    || w.job_title    || "",
+        company: w.organization || w.company     || "",
         from:    w.dates?.startDate ? String(w.dates.startDate).slice(0, 7) : "",
         to:      w.dates?.isCurrent ? "present" : (w.dates?.endDate ? String(w.dates.endDate).slice(0, 7) : ""),
       }));
 
-    const languages = (d.languages || [])
-      .map((l) => cleanSkill(l.name || l.rawText || ""))
+    const languages = rawLanguages
+      .map((l) => cleanSkill(l.name || l.rawText || l.value || ""))
       .filter(Boolean);
 
-    const certifications = (d.certifications || [])
+    const certifications = rawCerts
       .map((c) => ({
-        name:   cleanSkill(c.name || c.rawText || ""),
+        name:   cleanSkill(c.name || c.rawText || c.value || ""),
         issuer: c.organization || c.issuer || "",
         date:   c.completionDate ? String(c.completionDate).slice(0, 7) : "",
       }))
       .filter((c) => c.name);
 
-    return res.status(200).json({ ok: true, name, phone, city, summary, skills, workHistory, languages, certifications });
+    // Include a debug snapshot so the client can log the actual Affinda structure
+    const _debug = {
+      affindaKeys: Object.keys(d).sort(),
+      skillsCount: rawSkills.length,
+      workExpCount: rawWorkExp.length,
+      certsCount: rawCerts.length,
+      skillsSample: rawSkills.slice(0, 3),
+      workExpSample: rawWorkExp.slice(0, 1),
+    };
+
+    return res.status(200).json({ ok: true, name, phone, city, summary, skills, workHistory, languages, certifications, _debug });
 
   } catch (e) {
     console.error("[parse-cv] error:", e?.message || String(e));
