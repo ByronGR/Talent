@@ -89,9 +89,15 @@ export default async function handler(req, res) {
     // Strip trailing punctuation/whitespace that Affinda sometimes includes
     const cleanSkill = (s) => String(s || "").replace(/[,.\s]+$/, "").replace(/^[,.\s]+/, "").trim();
 
-    // Affinda custom workspaces return entries with a nested `.parsed` object.
-    // Flat fields (e.g. w.jobTitle) are not present — use w.parsed.workExperienceJobTitle.raw etc.
+    // Debug: log all top-level keys and work entry parsed keys to identify remaining field names
+    console.log("[parse-cv] top-level keys:", Object.keys(d).sort().join(", "));
     const rawWorkExp = d.workExperience || d.work_experience || d.WorkExperience || [];
+    if (rawWorkExp[0]) {
+      const p0 = rawWorkExp[0].parsed || {};
+      console.log("[parse-cv] workEntry.parsed keys:", Object.keys(p0).join(", "));
+      const dateKeys = Object.keys(p0).filter((k) => /date/i.test(k));
+      dateKeys.forEach((k) => console.log(`[parse-cv] ${k}:`, JSON.stringify(p0[k])));
+    }
 
     const workHistory = rawWorkExp
       .map((w) => {

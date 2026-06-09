@@ -476,7 +476,7 @@ function skillSearchMarkup(selectedSkills) {
         `).join("") || '<span class="skill-empty">Selected skills will appear here.</span>'}
       </div>
       <div class="skill-search-box">
-        <input id="skillSearchInput" type="search" autocomplete="off" placeholder="Search skills like Salesforce, payroll, React, B2B sales..." />
+        <input id="skillSearchInput" type="search" autocomplete="off" placeholder="Type any skill — e.g. Salesforce, Excel, B2B sales, Canva…" />
         <button class="secondary-action" type="button" id="addTypedSkill">Add skill</button>
       </div>
       <div class="skill-suggestions" id="skillSuggestions">
@@ -3365,17 +3365,23 @@ function bindSkillSearch() {
   };
   const renderSuggestions = () => {
     const queryText = normalizeSkillName(input.value);
-    const current = new Set(selected().map(normalizeSkillName));
-    const matches = ALL_SKILLS
+    const rawText   = input.value.trim();
+    const current   = new Set(selected().map(normalizeSkillName));
+    const matches   = ALL_SKILLS
       .filter((skill) => !current.has(normalizeSkillName(skill)))
       .filter((skill) => !queryText || normalizeSkillName(skill).includes(queryText))
-      .slice(0, 18);
-    suggestions.innerHTML = matches.length
-      ? matches.map((skill) => `<button type="button" class="skill-suggestion" data-skill="${escapeAttr(skill)}">${escapeHtml(skill)}</button>`).join("")
-      : `<button type="button" class="skill-suggestion add-custom" data-skill="${escapeAttr(input.value)}">Add "${escapeHtml(input.value)}"</button>`;
+      .slice(0, 12);
+    // When the user has typed something, always offer to add their exact text
+    const exactMatch  = matches.find((s) => normalizeSkillName(s) === queryText);
+    const showCustom  = rawText.length > 1 && !current.has(normalizeSkillName(rawText)) && !exactMatch;
+    const customBtn   = showCustom ? `<button type="button" class="skill-suggestion add-custom" data-skill="${escapeAttr(rawText)}">+ Add "${escapeHtml(rawText)}"</button>` : "";
+    suggestions.innerHTML = customBtn + matches.map((skill) =>
+      `<button type="button" class="skill-suggestion" data-skill="${escapeAttr(skill)}">${escapeHtml(skill)}</button>`
+    ).join("");
   };
   const addSkill = (value) => {
-    const skill = canonicalSkillName(value || input.value);
+    const raw   = (value || input.value).trim();
+    const skill = canonicalSkillName(raw);
     if (!skill) return;
     const normalized = normalizeSkillName(skill);
     const next = [...selected().filter((item) => normalizeSkillName(item) !== normalized), skill];
@@ -3389,8 +3395,10 @@ function bindSkillSearch() {
   input?.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return;
     event.preventDefault();
-    const first = suggestions.querySelector(".skill-suggestion");
-    addSkill(first?.dataset.skill || input.value);
+    // Prefer an exact catalog match, otherwise add exactly what was typed
+    const queryText = normalizeSkillName(input.value);
+    const exactBtn  = [...suggestions.querySelectorAll(".skill-suggestion:not(.add-custom)")].find((b) => normalizeSkillName(b.dataset.skill) === queryText);
+    addSkill(exactBtn?.dataset.skill || input.value);
   });
   shell.querySelector("#addTypedSkill")?.addEventListener("click", () => addSkill(input.value));
   suggestions.addEventListener("click", (event) => {
