@@ -231,6 +231,7 @@ function toAtsCandidate(uid, data) {
     linkedin: data.linkedin || "",
     cv: data.activeCvName || "",
     cvUrl: data.cvUrl || null,
+    photoUrl: data.photoURL || data.photoUrl || null,
     tags: data.tags || ["talent profile"],
     notes: data.summary || "",
     appliedBefore: Boolean(data.appliedBefore),
@@ -661,48 +662,30 @@ async function saveNotificationPreferences(uid, preferences) {
 }
 
 // ─── CV parsing via Affinda ───────────────────────────────────────────────────
-// Sends the raw file to the Affinda resume parser and returns structured profile
-// fields. Returns null silently on any error so it never blocks the normal flow.
+// Sends the file to /api/parse-cv (our server-side proxy) so the Affinda key
+// stays out of the client bundle entirely. Returns null silently on any error.
 
 async function parseCvWithAffinda(file) {
-  const key = import.meta.env.VITE_AFFINDA_API_KEY;
-  if (!key || !file) return null;
+  if (!file) return null;
   try {
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("workspace", "1007732");
-    formData.append("documentType", "1058304");
-    const res = await fetch("https://api.affinda.com/v3/documents", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}` },
-      body: formData,
+    // Read file as base64 so we can send it in a JSON body (avoids multipart
+    // complexity on the client and keeps the function simple).
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload  = () => resolve(reader.result.split(",")[1]); // strip data:…;base64, prefix
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    const res = await fetch("/api/parse-cv", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ data: base64, filename: file.name, mimeType: file.type || "application/octet-stream" }),
     });
     if (!res.ok) return null;
     const json = await res.json();
-    const d = json?.data;
-    if (!d) return null;
-
-    const name = d.name?.raw
-      || [d.name?.first, d.name?.last].filter(Boolean).join(" ")
-      || "";
-    const phone = d.phoneNumbers?.[0]?.value || "";
-    const city  = d.location?.city || "";
-    const summary = typeof d.summary === "string" ? d.summary.slice(0, 800) : "";
-    const skills = (d.skills || []).map((s) => s.name).filter(Boolean);
-
-    const workHistory = (d.workExperience || [])
-      .filter((w) => w.jobTitle || w.organization)
-      .map((w) => ({
-        title:   w.jobTitle      || "",
-        company: w.organization  || "",
-        from:    w.dates?.startDate
-                   ? String(w.dates.startDate).slice(0, 7)
-                   : "",
-        to:      w.dates?.isCurrent
-                   ? "present"
-                   : (w.dates?.endDate ? String(w.dates.endDate).slice(0, 7) : ""),
-      }));
-
+    if (!json?.ok) return null;
+    const { name, phone, city, summary, skills, workHistory } = json;
     return { name, phone, city, summary, skills, workHistory };
   } catch {
     return null;
