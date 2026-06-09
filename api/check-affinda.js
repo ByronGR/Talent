@@ -60,7 +60,8 @@ export default async function handler(req, res) {
         const tp = (n, v) => `--${bnd}${CRLF}Content-Disposition: form-data; name="${n}"${CRLF}${CRLF}${v}${CRLF}`;
         const fileBuf = Buffer.from(tinyPdf, "base64");
         const body = Buffer.concat([
-          Buffer.from(tp("collection", colId)),
+          Buffer.from(tp("workspace", "iKIEtiBE")),
+          Buffer.from(tp("documentType", colId)),
           Buffer.from(`--${bnd}${CRLF}Content-Disposition: form-data; name="file"; filename="probe.pdf"${CRLF}Content-Type: application/pdf${CRLF}${CRLF}`),
           fileBuf,
           Buffer.from(`${CRLF}--${bnd}--${CRLF}`),
