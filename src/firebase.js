@@ -682,9 +682,16 @@ async function parseCvWithAffinda(file) {
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ data: base64, filename: file.name, mimeType: file.type || "application/octet-stream" }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.error("[parseCvWithAffinda] proxy error", res.status, err);
+      return null;
+    }
     const json = await res.json();
-    if (!json?.ok) return null;
+    if (!json?.ok) {
+      console.error("[parseCvWithAffinda] proxy returned ok:false", json);
+      return null;
+    }
     const { name, phone, city, summary, skills, workHistory } = json;
     return { name, phone, city, summary, skills, workHistory };
   } catch {
