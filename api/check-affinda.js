@@ -23,12 +23,29 @@ export default async function handler(req, res) {
       headers: { Authorization: `Bearer ${key.trim()}` },
     });
     const body = await testRes.text().catch(() => "");
-    // 400 validation_error on /workspaces means auth passed but the endpoint
-    // needs an org param — still counts as key valid.
-    if (testRes.ok || testRes.status === 400) {
-      return res.status(200).json({ ok: true, step: "auth_ok", keyInfo, affindaStatus: testRes.status, note: testRes.status === 400 ? "Key valid — 400 just means org param required on this endpoint" : "Key valid" });
+    if (!testRes.ok && testRes.status !== 400) {
+      return res.status(200).json({ ok: false, step: "auth", keyInfo, affindaStatus: testRes.status, affindaDetail: body.slice(0, 300) });
     }
-    return res.status(200).json({ ok: false, step: "auth", keyInfo, affindaStatus: testRes.status, affindaDetail: body.slice(0, 300) });
+
+    // Auth passed — now fetch workspaces for org 1012950
+    const wsRes  = await fetch("https://api.us1.affinda.com/v3/workspaces?organization=1012950", {
+      headers: { Authorization: `Bearer ${key.trim()}` },
+    });
+    const wsBody = await wsRes.json().catch(() => null);
+
+    // Also fetch document types
+    const dtRes  = await fetch("https://api.us1.affinda.com/v3/documentTypes", {
+      headers: { Authorization: `Bearer ${key.trim()}` },
+    });
+    const dtBody = await dtRes.json().catch(() => null);
+
+    return res.status(200).json({
+      ok: true,
+      step: "auth_ok",
+      keyInfo,
+      workspaces: wsBody,
+      documentTypes: dtBody,
+    });
   } catch (e) {
     return res.status(200).json({ ok: false, step: "fetch", keyInfo, error: e?.message });
   }
