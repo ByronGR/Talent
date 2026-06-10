@@ -56,6 +56,7 @@ module.exports = async function handler(req, res) {
     jobtitle: candidate.role,
     company: firstPipeline.orgName || 'Nearwork Candidate',
     website: candidate.profileUrl,
+    type: 'Candidate',
     nearwork_contact_type: 'candidate',
     nearwork_portal_type: 'talent',
     nearwork_candidate_code: candidate.code,
