@@ -1318,16 +1318,24 @@ function renderOnboarding() {
   // Pre-populate from any data already collected (e.g. from jobs.nearwork.co account creation)
   // so the candidate doesn't have to re-enter what they've already provided.
   const c = state.candidate || {};
+  const nameParts = String(c.name || "").trim().split(/\s+/).filter(Boolean);
   _onbData = {
     roleGroup:  c.roleGroup  || "",
     targetRole: c.targetRole || "",
     department: c.department || c.locationDepartment || "",
     city:       c.city       || c.locationCity       || "",
-    salary:     String(c.salaryAmount || c.salary || ""),
     english:    c.english    || "",
-    name:       c.name       || "",
-    whatsapp:   c.whatsapp   || c.phone              || "",
+    firstName:  c.firstName  || nameParts[0] || "",
+    lastName:   c.lastName   || nameParts.slice(1).join(" ") || "",
+    phone:      c.phone || c.whatsapp || "",
+    currentRole: c.currentRole || "",
+    expectedSalaryUSD: c.expectedSalaryUSD || (c.salaryCurrency !== "COP" ? c.salaryAmount : null) || "",
+    expectedSalaryCOP: c.expectedSalaryCOP || (c.salaryCurrency === "COP" ? c.salaryAmount : null) || "",
     linkedin:   c.linkedin   || "",
+    experience: Array.isArray(c.workHistory) ? c.workHistory.map(w => ({ ...w })) : [],
+    languages:  Array.isArray(c.languages) ? [...c.languages] : [],
+    skills:     Array.isArray(c.skills) ? [...c.skills] : [],
+    certifications: Array.isArray(c.certifications) ? c.certifications.map(x => ({ ...x })) : [],
   };
   _onbCvFile = null; _onbParsePromise = null; _onbParsed = null;
   return `<div id="onboardingWizard" class="onb-shell"></div>`;
@@ -1349,7 +1357,7 @@ function _onbRender(step) {
 }
 
 function _onbProgress(step) {
-  const total = 4;
+  const total = 3;
   return `
     <div style="display:flex;align-items:center;gap:5px;margin-bottom:28px;">
       ${Array.from({ length: total }, (_, i) => `
@@ -1405,81 +1413,99 @@ function _onbStepHtml(step) {
         </div>`;
     }
 
-    // ── Step 2: Role ──────────────────────────────────────────────────────────
+    // ── Step 2: Basic info ────────────────────────────────────────────────────
     case 2: {
-      const rg = d.roleGroup || Object.keys(roleGroups)[0] || "";
+      const email = state.candidate?.email || state.user?.email || "";
+      const phone = d.phone || (_onbParsed?.phone ?? "");
+      const currentRole = d.currentRole || (_onbParsed?.workHistory?.[0]?.title ?? "");
       return `
         <div class="onb-step">
           ${_onbProgress(2)}
-          <p class="eyebrow">Step 2 · Role</p>
-          <h2 class="onb-heading">What role are you looking for?</h2>
-          <p class="onb-sub">We use this to match you with the right openings from our clients.</p>
-          <div style="display:grid;gap:12px;margin-bottom:4px;">
-            ${_onbField("Area", false, `<select id="onbRoleGroup" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${roleGroupOptions(rg)}</select>`)}
-            ${_onbField("Role", false, `<select id="onbTargetRole" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${roleOptionsForGroup(rg, d.targetRole || "")}</select>`)}
+          <p class="eyebrow">Step 2 · Your profile</p>
+          <h2 class="onb-heading">Tell us about yourself</h2>
+          <p class="onb-sub">This is the basic information we'll use across every role you apply for.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:4px;">
+            ${_onbField("First name", false, _onbInput("onbFirstName", "text", d.firstName || "", "María", 'autocomplete="given-name"'))}
+            ${_onbField("Last name", false, _onbInput("onbLastName", "text", d.lastName || "", "García", 'autocomplete="family-name"'))}
           </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:4px;">
+            ${_onbField("Email", false, _onbInput("onbEmail", "email", email, "", "disabled"))}
+            ${_onbField("Phone", false, _onbInput("onbPhone", "tel", phone, "+57 300 123 4567", 'autocomplete="tel"'))}
+          </div>
+          ${_onbField("Current role", false, _onbInput("onbCurrentRole", "text", currentRole, "e.g. Customer Success Manager"))}
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:4px;">
+            ${_onbField("Expected salary — USD", true, _onbInput("onbSalaryUSD", "number", d.expectedSalaryUSD || "", "2500", 'min="0" step="100"'))}
+            ${_onbField("Expected salary — COP", true, _onbInput("onbSalaryCOP", "number", d.expectedSalaryCOP || "", "10000000", 'min="0" step="100000"'))}
+          </div>
+          ${_onbField("LinkedIn", true, _onbInput("onbLinkedin", "url", d.linkedin || "", "https://linkedin.com/in/..."))}
+          <p id="onbBasicError" style="font-size:12px;color:#e74c3c;min-height:16px;margin:4px 0 0;"></p>
           ${_onbActions(1)}
         </div>`;
     }
 
-    // ── Step 3: Location + compensation ───────────────────────────────────────
+    // ── Step 3: Role + Location ────────────────────────────────────────────────
     case 3: {
+      const rg = d.roleGroup || Object.keys(roleGroups)[0] || "";
       const dept  = d.department || Object.keys(locationCatalog)[0] || "";
       const cities = locationCatalog[dept] || [];
       return `
         <div class="onb-step">
           ${_onbProgress(3)}
-          <p class="eyebrow">Step 3 · Location & compensation</p>
-          <h2 class="onb-heading">Where are you based?</h2>
-          <p class="onb-sub">This helps us narrow down roles by location and align on salary expectations.</p>
+          <p class="eyebrow">Step 3 · Role & location</p>
+          <h2 class="onb-heading">What role are you looking for, and where are you based?</h2>
+          <p class="onb-sub">We use this to match you with the right openings from our clients.</p>
           <div style="display:grid;gap:12px;margin-bottom:4px;">
+            ${_onbField("Area", false, `<select id="onbRoleGroup" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${roleGroupOptions(rg)}</select>`)}
+            ${_onbField("Role", false, `<select id="onbTargetRole" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${roleOptionsForGroup(rg, d.targetRole || "")}</select>`)}
             ${_onbField("Department", false, `<select id="onbDept" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${Object.keys(locationCatalog).map((dep) => `<option value="${escapeAttr(dep)}" ${dep === dept ? "selected" : ""}>${escapeHtml(dep)}</option>`).join("")}</select>`)}
             ${_onbField("City", false, `<select id="onbCity" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${cities.map((c) => `<option value="${escapeAttr(c)}" ${c === d.city ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select>`)}
-            ${_onbField("Target monthly salary (USD)", true, _onbInput("onbSalary", "number", d.salary || "", "e.g. 2000", 'min="0"'))}
             ${_onbField("English level", false, `<select id="onbEnglish" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${["", "B1", "B2", "C1", "C2", "Native"].map((l) => `<option value="${l}" ${l === d.english ? "selected" : ""}>${l || "Select level"}</option>`).join("")}</select>`)}
           </div>
-          ${_onbActions(2)}
-        </div>`;
-    }
-
-    // ── Step 4: Contact + name ────────────────────────────────────────────────
-    case 4: {
-      const defaultName = d.name || state.candidate?.name || state.user?.displayName || "";
-      const defaultPhone = d.whatsapp || (_onbParsed?.phone ?? "");
-      return `
-        <div class="onb-step">
-          ${_onbProgress(4)}
-          <p class="eyebrow">Step 4 · Contact</p>
-          <h2 class="onb-heading">How can we reach you?</h2>
-          <p class="onb-sub">Your WhatsApp number is how our recruiters will contact you directly.</p>
-          <div style="display:grid;gap:12px;margin-bottom:4px;">
-            ${_onbField("Full name", false, _onbInput("onbName", "text", defaultName, "Your full name", 'autocomplete="name"'))}
-            ${_onbField("WhatsApp number", false, _onbInput("onbWhatsapp", "tel", defaultPhone, "+57 300 123 4567", 'autocomplete="tel"'))}
-            ${_onbField("LinkedIn", true, _onbInput("onbLinkedin", "url", d.linkedin || "", "https://linkedin.com/in/...", ""))}
-          </div>
-          <p id="onbContactError" style="font-size:12px;color:#e74c3c;min-height:16px;margin:4px 0 0;"></p>
-          ${_onbActions(3, "Review →")}
+          ${_onbActions(2, "Review →")}
         </div>`;
     }
 
     // ── Review ────────────────────────────────────────────────────────────────
-    case 5: return _onbReviewHtml();
+    case 4: return _onbReviewHtml();
 
     default: return "";
   }
 }
 
+const ONB_LIST_INPUT_STYLE = "font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;width:100%;box-sizing:border-box;";
+const ONB_LIST_REMOVE_STYLE = "flex-shrink:0;width:38px;height:38px;border:1.5px solid var(--border);border-radius:8px;background:#fff;color:var(--light);font-size:14px;cursor:pointer;";
+
+function _onbListLabel(text) {
+  return `<label style="display:block;margin-bottom:8px;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--light);">${text}</label>`;
+}
+
 function _onbReviewHtml() {
   const d = _onbData;
   const p = _onbParsed || {};
-  const name     = d.name     || p.name     || state.candidate?.name || "—";
+
+  // Pre-fill editable lists from the parsed CV the first time we land on Review.
+  if (!d.experience.length && Array.isArray(p.workHistory) && p.workHistory.length) {
+    d.experience = p.workHistory.map((w) => ({ company: w.company || "", title: w.title || "", from: w.from || "", to: w.to || "" }));
+  }
+  if (!d.languages.length && Array.isArray(p.languages) && p.languages.length) {
+    d.languages = p.languages.filter(Boolean).map(String);
+  }
+  if (!d.skills.length && Array.isArray(p.skills) && p.skills.length) {
+    d.skills = [...new Set(p.skills.map(canonicalSkillName).filter(Boolean))];
+  }
+  if (!d.certifications.length && Array.isArray(p.certifications) && p.certifications.length) {
+    d.certifications = p.certifications.map((c) => ({ name: c.name || "", issuer: c.issuer || "", date: c.date || "" }));
+  }
+
+  const name     = [d.firstName, d.lastName].filter(Boolean).join(" ") || state.candidate?.name || "—";
   const role     = d.targetRole || "—";
   const location = [d.city, d.department].filter(Boolean).join(", ") || "—";
-  const salary   = d.salary   ? `USD ${Number(d.salary).toLocaleString()}/mo` : "—";
+  const salaryParts = [];
+  if (d.expectedSalaryUSD) salaryParts.push(`USD ${Number(d.expectedSalaryUSD).toLocaleString()}/mo`);
+  if (d.expectedSalaryCOP) salaryParts.push(`COP ${Number(d.expectedSalaryCOP).toLocaleString()}/mo`);
+  const salary   = salaryParts.join(" · ") || "—";
   const english  = d.english  || "—";
-  const whatsapp = d.whatsapp || "—";
-  const skills   = p.skills   || [];
-  const work     = p.workHistory || [];
+  const phone    = d.phone || "—";
   const cvName   = _onbCvFile?.name || "";
 
   const row = (label, value) => !value || value === "—" ? "" : `
@@ -1499,34 +1525,128 @@ function _onbReviewHtml() {
         ${row("Location", location)}
         ${row("Salary",   salary)}
         ${row("English",  english)}
-        ${row("WhatsApp", whatsapp)}
+        ${row("Phone",    phone)}
+        ${row("Current role", d.currentRole || "—")}
         ${cvName ? row("CV", cvName) : ""}
-        ${skills.length ? `
-          <div style="display:flex;gap:16px;padding:10px 0;border-bottom:1px solid var(--border);">
-            <span style="width:110px;flex-shrink:0;font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--light);padding-top:6px;">Skills</span>
-            <div style="display:flex;flex-wrap:wrap;gap:4px;">
-              ${skills.slice(0, 12).map((s) => `<span style="background:var(--bg);border:1px solid var(--border);border-radius:999px;padding:3px 10px;font-size:11px;color:var(--mid);">${escapeHtml(s)}</span>`).join("")}
-              ${skills.length > 12 ? `<span style="font-size:11px;color:var(--light);padding:4px 6px;">+${skills.length - 12} more</span>` : ""}
-            </div>
-          </div>` : ""}
-        ${work.length ? `
-          <div style="display:flex;gap:16px;padding:10px 0;">
-            <span style="width:110px;flex-shrink:0;font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--light);padding-top:4px;">Experience</span>
-            <div style="display:flex;flex-direction:column;gap:8px;">
-              ${work.map((w) => `
-                <div>
-                  <p style="font-size:13px;font-weight:600;color:var(--black);margin:0;">${escapeHtml(w.title || "—")}</p>
-                  <p style="font-size:12px;color:var(--mid);margin:2px 0 0;">${escapeHtml(w.company || "")}${w.from ? ` · ${w.from} → ${w.to === "present" ? "Present" : w.to || "?"}` : ""}</p>
-                </div>`).join("")}
-            </div>
-          </div>` : ""}
       </div>
+
+      <div class="field" style="margin-bottom:20px;">
+        ${_onbListLabel("Experience")}
+        <div id="onbExperienceList"></div>
+        <button type="button" class="secondary-action" id="onbAddExperience">+ Add position</button>
+      </div>
+
+      <div class="field" style="margin-bottom:20px;">
+        ${_onbListLabel("Languages")}
+        <div id="onbLanguagesList"></div>
+        <button type="button" class="secondary-action" id="onbAddLanguage">+ Add language</button>
+      </div>
+
+      <div class="field" style="margin-bottom:20px;">
+        ${_onbListLabel("Skills")}
+        ${skillSearchMarkup(d.skills)}
+      </div>
+
+      <div class="field" style="margin-bottom:20px;">
+        ${_onbListLabel("Certifications")}
+        <div id="onbCertificationsList"></div>
+        <button type="button" class="secondary-action" id="onbAddCertification">+ Add certification</button>
+      </div>
+
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <button type="button" id="onbEdit" class="secondary-action">← Edit</button>
         <button type="button" id="onbFinish" class="primary-action">${icon("check")} Finish setup</button>
       </div>
       <p id="onbFinishErr" style="font-size:12px;color:#e74c3c;text-align:right;min-height:18px;margin-top:6px;"></p>
     </div>`;
+}
+
+function _onbRenderExperienceList() {
+  const container = document.querySelector("#onbExperienceList");
+  if (!container) return;
+  container.innerHTML = "";
+  if (!_onbData.experience.length) {
+    container.innerHTML = `<p style="font-size:12px;color:var(--light);margin:0 0 10px;">No experience added yet.</p>`;
+  }
+  _onbData.experience.forEach((exp, idx) => {
+    const row = document.createElement("div");
+    row.style.cssText = "border:1.5px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;";
+    row.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+        <input type="text" data-k="title" placeholder="Title" value="${escapeAttr(exp.title || "")}" style="${ONB_LIST_INPUT_STYLE}">
+        <input type="text" data-k="company" placeholder="Company" value="${escapeAttr(exp.company || "")}" style="${ONB_LIST_INPUT_STYLE}">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center;">
+        <input type="month" data-k="from" value="${escapeAttr(exp.from || "")}" style="${ONB_LIST_INPUT_STYLE}">
+        <input type="month" data-k="to" value="${exp.to === "present" ? "" : escapeAttr(exp.to || "")}" ${exp.to === "present" ? "disabled" : ""} style="${ONB_LIST_INPUT_STYLE}">
+        <button type="button" class="onb-list-remove" aria-label="Remove" style="${ONB_LIST_REMOVE_STYLE}">×</button>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mid);margin-top:8px;">
+        <input type="checkbox" data-k="current" ${exp.to === "present" ? "checked" : ""}> I currently work here
+      </label>`;
+    row.querySelectorAll('input[type="text"][data-k], input[type="month"][data-k]').forEach((inp) => {
+      inp.addEventListener("input", (e) => { exp[e.target.dataset.k] = e.target.value; });
+    });
+    row.querySelector('input[type="checkbox"][data-k="current"]')?.addEventListener("change", (e) => {
+      exp.to = e.target.checked ? "present" : "";
+      _onbRenderExperienceList();
+    });
+    row.querySelector(".onb-list-remove")?.addEventListener("click", () => {
+      _onbData.experience.splice(idx, 1);
+      _onbRenderExperienceList();
+    });
+    container.appendChild(row);
+  });
+}
+
+function _onbRenderLanguagesList() {
+  const container = document.querySelector("#onbLanguagesList");
+  if (!container) return;
+  container.innerHTML = "";
+  if (!_onbData.languages.length) {
+    container.innerHTML = `<p style="font-size:12px;color:var(--light);margin:0 0 10px;">No languages added yet.</p>`;
+  }
+  _onbData.languages.forEach((lang, idx) => {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:10px;align-items:center;margin-bottom:8px;";
+    row.innerHTML = `
+      <input type="text" value="${escapeAttr(lang)}" placeholder="e.g. English (B2)" style="${ONB_LIST_INPUT_STYLE}flex:1;">
+      <button type="button" class="onb-list-remove" aria-label="Remove" style="${ONB_LIST_REMOVE_STYLE}">×</button>`;
+    row.querySelector("input").addEventListener("input", (e) => { _onbData.languages[idx] = e.target.value; });
+    row.querySelector(".onb-list-remove").addEventListener("click", () => {
+      _onbData.languages.splice(idx, 1);
+      _onbRenderLanguagesList();
+    });
+    container.appendChild(row);
+  });
+}
+
+function _onbRenderCertificationsList() {
+  const container = document.querySelector("#onbCertificationsList");
+  if (!container) return;
+  container.innerHTML = "";
+  if (!_onbData.certifications.length) {
+    container.innerHTML = `<p style="font-size:12px;color:var(--light);margin:0 0 10px;">No certifications added yet.</p>`;
+  }
+  _onbData.certifications.forEach((cert, idx) => {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:10px;align-items:flex-start;margin-bottom:8px;";
+    row.innerHTML = `
+      <div style="flex:1;display:grid;grid-template-columns:1.4fr 1.4fr 1fr;gap:8px;">
+        <input type="text" data-k="name" value="${escapeAttr(cert.name || "")}" placeholder="Certification name" style="${ONB_LIST_INPUT_STYLE}">
+        <input type="text" data-k="issuer" value="${escapeAttr(cert.issuer || "")}" placeholder="Issuer" style="${ONB_LIST_INPUT_STYLE}">
+        <input type="text" data-k="date" value="${escapeAttr(cert.date || "")}" placeholder="Date" style="${ONB_LIST_INPUT_STYLE}">
+      </div>
+      <button type="button" class="onb-list-remove" aria-label="Remove" style="${ONB_LIST_REMOVE_STYLE}">×</button>`;
+    row.querySelectorAll("input[data-k]").forEach((inp) => {
+      inp.addEventListener("input", (e) => { cert[e.target.dataset.k] = e.target.value; });
+    });
+    row.querySelector(".onb-list-remove").addEventListener("click", () => {
+      _onbData.certifications.splice(idx, 1);
+      _onbRenderCertificationsList();
+    });
+    container.appendChild(row);
+  });
 }
 
 function _onbBindStep(step) {
@@ -1555,80 +1675,106 @@ function _onbBindStep(step) {
         _onbParsePromise = parseCvWithAffinda(file).catch(() => null);
       });
 
-      next?.addEventListener("click", () => _onbRender(2));
-      skipBtn?.addEventListener("click", () => { _onbCvFile = null; _onbParsePromise = null; _onbRender(2); });
+      next?.addEventListener("click", () => _onbAwaitParse(2));
+      skipBtn?.addEventListener("click", () => { _onbCvFile = null; _onbParsePromise = null; _onbAwaitParse(2); });
       break;
     }
 
     case 2: {
-      const rgSel  = document.querySelector("#onbRoleGroup");
-      const roleSel = document.querySelector("#onbTargetRole");
-      rgSel?.addEventListener("change", () => {
-        roleSel.innerHTML = roleOptionsForGroup(rgSel.value, "");
-      });
       next?.addEventListener("click", () => {
-        _onbData.roleGroup  = rgSel?.value  || "";
-        _onbData.targetRole = roleSel?.value || "";
+        const firstName   = document.querySelector("#onbFirstName")?.value.trim() || "";
+        const lastName    = document.querySelector("#onbLastName")?.value.trim() || "";
+        const phone       = document.querySelector("#onbPhone")?.value.trim() || "";
+        const currentRole = document.querySelector("#onbCurrentRole")?.value.trim() || "";
+        const usd         = document.querySelector("#onbSalaryUSD")?.value || "";
+        const cop         = document.querySelector("#onbSalaryCOP")?.value || "";
+        const linkedin    = document.querySelector("#onbLinkedin")?.value.trim() || "";
+        const errEl       = document.querySelector("#onbBasicError");
+        if (!firstName || !lastName || !phone || !currentRole) {
+          if (errEl) errEl.textContent = "Please fill in your name, phone, and current role.";
+          return;
+        }
+        if (!usd && !cop) {
+          if (errEl) errEl.textContent = "Please enter an expected salary in USD, COP, or both.";
+          return;
+        }
+        _onbData.firstName         = firstName;
+        _onbData.lastName          = lastName;
+        _onbData.phone             = phone;
+        _onbData.currentRole       = currentRole;
+        _onbData.expectedSalaryUSD = usd ? Number(usd) : "";
+        _onbData.expectedSalaryCOP = cop ? Number(cop) : "";
+        _onbData.linkedin          = linkedin;
         _onbRender(3);
       });
       break;
     }
 
     case 3: {
+      const rgSel   = document.querySelector("#onbRoleGroup");
+      const roleSel = document.querySelector("#onbTargetRole");
       const deptSel = document.querySelector("#onbDept");
       const citySel = document.querySelector("#onbCity");
+      rgSel?.addEventListener("change", () => {
+        roleSel.innerHTML = roleOptionsForGroup(rgSel.value, "");
+      });
       deptSel?.addEventListener("change", () => {
         const cities = locationCatalog[deptSel.value] || [];
         citySel.innerHTML = cities.map((c) => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join("");
       });
       next?.addEventListener("click", () => {
+        _onbData.roleGroup  = rgSel?.value  || "";
+        _onbData.targetRole = roleSel?.value || "";
         _onbData.department = deptSel?.value || "";
         _onbData.city       = citySel?.value || "";
-        _onbData.salary     = document.querySelector("#onbSalary")?.value || "";
         _onbData.english    = document.querySelector("#onbEnglish")?.value || "";
-        _onbRender(4);
+        _onbAwaitParse(4);
       });
       break;
     }
 
     case 4: {
-      next?.addEventListener("click", () => {
-        const name     = document.querySelector("#onbName")?.value.trim();
-        const whatsapp = document.querySelector("#onbWhatsapp")?.value.trim();
-        const errEl    = document.querySelector("#onbContactError");
-        if (!whatsapp) {
-          if (errEl) errEl.textContent = "WhatsApp number is required.";
-          document.querySelector("#onbWhatsapp")?.focus();
-          return;
-        }
-        _onbData.name     = name;
-        _onbData.whatsapp = whatsapp;
-        _onbData.linkedin = document.querySelector("#onbLinkedin")?.value.trim() || "";
-        _onbGoToReview();
-      });
-      break;
-    }
-
-    case 5: {
       document.querySelector("#onbEdit")?.addEventListener("click", () => _onbRender(1));
       document.querySelector("#onbFinish")?.addEventListener("click", _onbFinish);
+      _onbRenderExperienceList();
+      _onbRenderLanguagesList();
+      _onbRenderCertificationsList();
+      document.querySelector("#onbAddExperience")?.addEventListener("click", () => {
+        _onbData.experience.push({ company: "", title: "", from: "", to: "" });
+        _onbRenderExperienceList();
+      });
+      document.querySelector("#onbAddLanguage")?.addEventListener("click", () => {
+        _onbData.languages.push("");
+        _onbRenderLanguagesList();
+      });
+      document.querySelector("#onbAddCertification")?.addEventListener("click", () => {
+        _onbData.certifications.push({ name: "", issuer: "", date: "" });
+        _onbRenderCertificationsList();
+      });
+      bindSkillSearch();
       break;
     }
   }
 }
 
-async function _onbGoToReview() {
+async function _onbAwaitParse(step) {
   const el = document.querySelector("#onboardingWizard");
-  if (!el) return;
-  // Show "Finalising…" while we wait for Affinda if it's still in flight
+  // Show "Analysing…" while we wait for Affinda if it's still in flight
   if (_onbParsePromise && !_onbParsed) {
-    el.innerHTML = `<div class="onb-step"><p style="text-align:center;font-size:14px;font-weight:600;color:var(--green);padding:56px 0;">Finalising your profile…</p></div>`;
+    if (el) el.innerHTML = `<div class="onb-step"><p style="text-align:center;font-size:14px;font-weight:600;color:var(--green);padding:56px 0;">Analysing your CV…</p></div>`;
     _onbParsed = await _onbParsePromise;
   }
-  // Merge Affinda data that wasn't explicitly entered
-  if (_onbParsed?.phone && !_onbData.whatsapp) _onbData.whatsapp = _onbParsed.phone;
-  if (_onbParsed?.name  && !_onbData.name)     _onbData.name     = _onbParsed.name;
-  _onbRender(5);
+  // Merge Affinda data that wasn't explicitly entered yet
+  if (_onbParsed?.phone && !_onbData.phone) _onbData.phone = _onbParsed.phone;
+  if (_onbParsed?.name && !_onbData.firstName && !_onbData.lastName) {
+    const parts = String(_onbParsed.name).trim().split(/\s+/).filter(Boolean);
+    _onbData.firstName = parts[0] || "";
+    _onbData.lastName  = parts.slice(1).join(" ");
+  }
+  if (_onbParsed?.workHistory?.[0]?.title && !_onbData.currentRole) {
+    _onbData.currentRole = _onbParsed.workHistory[0].title;
+  }
+  _onbRender(step);
 }
 
 async function _onbFinish() {
@@ -1638,13 +1784,18 @@ async function _onbFinish() {
 
   try {
     const d   = _onbData;
-    const p   = _onbParsed || {};
     const uid = state.user?.uid;
     if (!uid) throw new Error("Not signed in");
 
-    const sal  = normalizeSalaryValue(d.salary || "", "USD");
     const dept = d.department || "";
     const city = d.city || "";
+    const usdVal = Number(d.expectedSalaryUSD || 0) || null;
+    const copVal = Number(d.expectedSalaryCOP || 0) || null;
+    const primaryAmount   = usdVal || copVal || null;
+    const primaryCurrency = usdVal ? "USD" : (copVal ? "COP" : "USD");
+    const salaryLabel = primaryAmount ? `${primaryCurrency} ${primaryAmount.toLocaleString()}/mo` : "";
+    const skills = [...document.querySelectorAll('[data-skill-search] input[name="skills"]')].map((el) => el.value);
+    const name = [d.firstName, d.lastName].filter(Boolean).join(" ") || state.candidate?.name || state.user?.displayName || "";
 
     // Upload CV (non-blocking — failure doesn't stop save)
     let cvFields = {};
@@ -1656,9 +1807,12 @@ async function _onbFinish() {
     }
 
     const profileData = {
-      name:                  d.name || p.name || state.candidate?.name || state.user?.displayName || "",
+      name,
+      firstName:             d.firstName || "",
+      lastName:              d.lastName || "",
       targetRole:            d.targetRole || "",
       headline:              d.targetRole || "",
+      currentRole:           d.currentRole || "",
       department:            dept,
       city,
       location:              [city, dept].filter(Boolean).join(", "),
@@ -1667,20 +1821,22 @@ async function _onbFinish() {
       locationCountry:       "Colombia",
       locationId:            `${String(city).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-")}-co`,
       english:               d.english || "",
-      salary:                sal.salary,
-      salaryUSD:             sal.salaryUSD,
-      salaryAmount:          sal.salaryAmount,
-      salaryCurrency:        "USD",
-      expectedSalaryAmount:  sal.salaryAmount,
-      expectedSalaryCurrency:"USD",
-      whatsapp:              d.whatsapp || "",
-      phone:                 d.whatsapp || "",
+      salary:                salaryLabel,
+      salaryUSD:             usdVal,
+      salaryAmount:          primaryAmount,
+      salaryCurrency:        primaryCurrency,
+      expectedSalaryUSD:     usdVal,
+      expectedSalaryCOP:     copVal,
+      expectedSalaryAmount:  primaryAmount,
+      expectedSalaryCurrency:primaryCurrency,
+      whatsapp:              d.phone || "",
+      phone:                 d.phone || "",
       linkedin:              d.linkedin || "",
-      skills:                [...new Set((p.skills || []).map(canonicalSkillName).filter(Boolean))],
-      workHistory:           p.workHistory    || [],
-      certifications:        p.certifications || [],
-      languages:             p.languages      || [],
-      summary:               p.summary        || "",
+      skills:                [...new Set(skills.map(canonicalSkillName).filter(Boolean))],
+      workHistory:           d.experience || [],
+      certifications:        (d.certifications || []).filter((c) => c.name && c.name.trim()),
+      languages:             (d.languages || []).map((l) => l.trim()).filter(Boolean),
+      summary:               _onbParsed?.summary || "",
       email:                 state.candidate?.email || state.user?.email || "",
       candidateCode:         state.candidate?.candidateCode,
       marketingConsent:      state.candidate?.marketingConsent === true,
