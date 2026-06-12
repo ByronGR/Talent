@@ -1632,7 +1632,7 @@ function _onbRenderCertificationsList() {
     const row = document.createElement("div");
     row.style.cssText = "display:flex;gap:10px;align-items:flex-start;margin-bottom:8px;";
     row.innerHTML = `
-      <div style="flex:1;display:grid;grid-template-columns:1.4fr 1.4fr 1fr;gap:8px;">
+      <div class="onb-cert-grid" style="flex:1;">
         <input type="text" data-k="name" value="${escapeAttr(cert.name || "")}" placeholder="Certification name" style="${ONB_LIST_INPUT_STYLE}">
         <input type="text" data-k="issuer" value="${escapeAttr(cert.issuer || "")}" placeholder="Issuer" style="${ONB_LIST_INPUT_STYLE}">
         <input type="text" data-k="date" value="${escapeAttr(cert.date || "")}" placeholder="Date" style="${ONB_LIST_INPUT_STYLE}">

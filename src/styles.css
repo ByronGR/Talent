@@ -169,20 +169,20 @@ h3 {
 .brand-copy h1 {
   margin-bottom: 18px;
   max-width: 760px;
-  color: #fff;
+  color: var(--black);
   font-size: clamp(2rem, 3.5vw, 3.2rem);
   line-height: 1.1;
   letter-spacing: 0;
 }
 
 .brand-copy h1 span {
-  color: var(--green-light);
+  color: var(--green);
 }
 
 .brand-copy p:last-child {
   margin: 0;
   max-width: 520px;
-  color: rgba(255, 255, 255, 0.82);
+  color: var(--gray-6);
   font-size: 1.08rem;
 }
 
@@ -190,9 +190,9 @@ h3 {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 30px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--gray-2);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--gray-1);
   overflow: hidden;
 }
 
@@ -200,7 +200,7 @@ h3 {
   display: grid;
   gap: 2px;
   padding: 14px 12px;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid var(--gray-2);
   text-align: center;
 }
 
@@ -209,13 +209,13 @@ h3 {
 }
 
 .stats strong {
-  color: #fff;
+  color: var(--black);
   font-size: 1.05rem;
   font-weight: 900;
 }
 
 .stats small {
-  color: rgba(255, 255, 255, 0.34);
+  color: var(--gray-5);
   font-size: 0.64rem;
   line-height: 1.35;
 }
@@ -231,7 +231,7 @@ h3 {
 .role-strip p {
   flex-basis: 100%;
   margin: 0 0 2px;
-  color: rgba(255, 255, 255, 0.24);
+  color: var(--gray-5);
   font-size: 0.64rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -241,10 +241,10 @@ h3 {
   display: inline-flex;
   align-items: center;
   padding: 4px 9px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--gray-2);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.52);
+  background: var(--gray-1);
+  color: var(--gray-6);
   font-size: 0.68rem;
   font-weight: 700;
 }
@@ -2720,7 +2720,6 @@ textarea:focus {
     padding: 22px;
   }
 
-  .role-strip,
   .topbar,
   .job-footer,
   .hero-card,
@@ -2875,6 +2874,18 @@ textarea:focus {
 @media (max-width: 540px) {
   .onb-step {
     padding: 24px 18px;
+  }
+}
+
+.onb-cert-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1.4fr 1fr;
+  gap: 8px;
+}
+
+@media (max-width: 480px) {
+  .onb-cert-grid {
+    grid-template-columns: 1fr;
   }
 }
 
