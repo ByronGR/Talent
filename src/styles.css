@@ -374,6 +374,38 @@ select {
   color: #111111;
 }
 
+.password-field {
+  position: relative;
+}
+
+.password-field input {
+  padding-right: 46px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: #9aa0a6;
+  cursor: pointer;
+}
+
+.password-toggle:hover {
+  color: #555555;
+}
+
+.password-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
 /* Checkboxes and radios must NOT inherit the full-width / tall-height rules */
 input[type="checkbox"],
 input[type="radio"] {

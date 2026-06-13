@@ -482,7 +482,7 @@ function skillSearchMarkup(selectedSkills) {
       <div class="skill-suggestions" id="skillSuggestions">
         ${popular.map((skill) => `<button type="button" class="skill-suggestion" data-skill="${escapeAttr(skill)}">${escapeHtml(skill)}</button>`).join("")}
       </div>
-      <p class="field-hint">Search, select, and remove skills anytime. Use as many as apply to your experience.</p>
+      <p class="field-hint">Select between 5 and 20 skills that best describe your experience.</p>
     </div>
   `;
 }
@@ -492,8 +492,9 @@ function normalizeSalaryValue(value, currency = "USD") {
   const salaryCurrency = String(currency || "USD").toUpperCase() === "COP" ? "COP" : "USD";
   if (!Number.isFinite(numeric) || numeric <= 0) return { salary: "", salaryUSD: null, salaryCurrency, salaryAmount: null };
   const rounded = Math.round(numeric);
+  const locale = salaryCurrency === "COP" ? "es-CO" : "en-US";
   return {
-    salary: `${salaryCurrency} ${new Intl.NumberFormat("en-US").format(rounded)}/mo`,
+    salary: `$${new Intl.NumberFormat(locale).format(rounded)} ${salaryCurrency}/mo`,
     salaryUSD: salaryCurrency === "USD" ? rounded : null,
     salaryCurrency,
     salaryAmount: rounded
@@ -607,7 +608,12 @@ function renderLogin(mode = "login") {
       <form id="authForm" class="stacked-form">
         ${isSignup ? `<label>Full name<input name="name" type="text" autocomplete="name" placeholder="Full name" required /></label>` : ""}
         <label>Email<input name="email" type="email" autocomplete="email" placeholder="you@example.com" required /></label>
-        <label>Password<input name="password" type="password" autocomplete="${isSignup ? "new-password" : "current-password"}" minlength="6" placeholder="••••••••" required /></label>
+        <label>Password
+          <div class="password-field">
+            <input name="password" type="password" autocomplete="${isSignup ? "new-password" : "current-password"}" minlength="6" placeholder="••••••••" required />
+            <button type="button" class="password-toggle" data-password-toggle aria-label="Show password">${icon("eye")}</button>
+          </div>
+        </label>
         ${isSignup ? `
         <div id="consentBlock" style="margin:2px 0 4px;">
           <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:#2d2d2d;line-height:1.5;margin-bottom:3px;">
@@ -629,6 +635,16 @@ function renderLogin(mode = "login") {
   `);
 
   document.querySelector("#toggleMode").addEventListener("click", () => renderLogin(isSignup ? "login" : "signup"));
+  document.querySelectorAll("[data-password-toggle]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const input = btn.previousElementSibling;
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      btn.innerHTML = icon(show ? "eye-off" : "eye");
+      btn.setAttribute("aria-label", show ? "Hide password" : "Show password");
+      syncIcons();
+    });
+  });
   document.querySelector("#googleSignIn").addEventListener("click", async () => {
     const message = document.querySelector("#formMessage");
     message.textContent = "";
@@ -874,7 +890,7 @@ function profileChecklist() {
     { id: "salary",   label: "Salary",       done: Boolean(c.salaryAmount || c.salary) },
     { id: "english",  label: "English",      done: Boolean(c.english) },
     { id: "whatsapp", label: "WhatsApp",     done: Boolean(c.whatsapp || c.phone) },
-    { id: "skills",   label: "Skills (3+)",  done: skills.length >= 3 },
+    { id: "skills",   label: "Skills (5-20)", done: skills.length >= 5 },
     { id: "cv",       label: "CV",           done: Boolean(c.cvUrl) },
   ];
 }
@@ -1501,8 +1517,8 @@ function _onbReviewHtml() {
   const role     = d.targetRole || "—";
   const location = [d.city, d.department].filter(Boolean).join(", ") || "—";
   const salaryParts = [];
-  if (d.expectedSalaryUSD) salaryParts.push(`USD ${Number(d.expectedSalaryUSD).toLocaleString()}/mo`);
-  if (d.expectedSalaryCOP) salaryParts.push(`COP ${Number(d.expectedSalaryCOP).toLocaleString()}/mo`);
+  if (d.expectedSalaryUSD) salaryParts.push(`$${Number(d.expectedSalaryUSD).toLocaleString("en-US")} USD/mo`);
+  if (d.expectedSalaryCOP) salaryParts.push(`$${Number(d.expectedSalaryCOP).toLocaleString("es-CO")} COP/mo`);
   const salary   = salaryParts.join(" · ") || "—";
   const english  = d.english  || "—";
   const phone    = d.phone || "—";
@@ -1858,7 +1874,7 @@ function renderMatches() {
   const preferredRole = state.candidate?.targetRole || (!isPlaceholderRole(state.candidate?.headline) ? state.candidate?.headline : "");
   const skills = candidateSkills();
   const filteredJobs = state.jobs.map(normalizeRole).filter((job) => matchingSkillsForJob(job, skills).length >= 3);
-  const canFilter = skills.length >= 3;
+  const canFilter = skills.length >= 5;
   const visibleJobs = state.matchesFiltered && canFilter ? filteredJobs : state.jobs.map(normalizeRole);
   const filteredEmpty = state.matchesFiltered && !filteredJobs.length;
   return `
@@ -2649,7 +2665,6 @@ function renderProfileForm(mode = "profile") {
         <!-- ── Skills ── -->
         <div class="pf-card">
           ${pfCardHead("sparkles", "Skills", skills.length ? `${skills.length} added` : "")}
-          <p class="pf-hint">Search for skills and add everything that applies to your experience.</p>
           ${skillSearchMarkup(skills)}
         </div>
 
@@ -2890,7 +2905,7 @@ function bindDashboardEvents() {
     const hasProfileSignals = candidateSkills().length >= 3;
     setState({
       matchesFiltered: hasProfileSignals ? !state.matchesFiltered : false,
-      message: hasProfileSignals ? "" : "Add at least 3 skills in Profile first, then filter matching openings."
+      message: hasProfileSignals ? "" : "Add at least 5 skills in Profile first, then filter matching openings."
     });
   });
   document.querySelector("#departmentSelect")?.addEventListener("change", (event) => {
@@ -3540,7 +3555,12 @@ function bindSkillSearch() {
     const skill = canonicalSkillName(raw);
     if (!skill) return;
     const normalized = normalizeSkillName(skill);
-    const next = [...selected().filter((item) => normalizeSkillName(item) !== normalized), skill];
+    const current = selected();
+    if (current.length >= 20 && !current.some((item) => normalizeSkillName(item) === normalized)) {
+      input.value = "";
+      return;
+    }
+    const next = [...current.filter((item) => normalizeSkillName(item) !== normalized), skill];
     renderSelected(next);
     input.value = "";
     renderSuggestions();
