@@ -1,6 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import {
   GoogleAuthProvider,
+  getAdditionalUserInfo,
   getAuth,
   onAuthStateChanged,
   sendPasswordResetEmail,
@@ -264,6 +265,11 @@ function toAtsCandidate(uid, data) {
 async function signInWithGoogle(marketingConsent = false) {
   requireFirebase();
   const result = await signInWithPopup(auth, googleProvider);
+  // Firebase's own signal for "this Google sign-in just created the Auth account" —
+  // more reliable than checking Firestore, since a same-email profile created
+  // elsewhere (e.g. via Jobs) under a different uid can otherwise mask a brand-new
+  // Google account and suppress the welcome email.
+  const isNewAuthAccount = getAdditionalUserInfo(result)?.isNewUser === true;
   const profile = await getCandidateForAuthUser(result.user);
   const consentAt = new Date().toISOString();
   const basicData = {
@@ -279,6 +285,8 @@ async function signInWithGoogle(marketingConsent = false) {
   const isNewAccount = !profile;
   if (isNewAccount) {
     await upsertCandidate(result.user.uid, basicData);
+  }
+  if (isNewAuthAccount) {
     sendCandidateAccountCreatedEmail(basicData).catch(() => null);
   }
   const candidateCode = candidateCodeForUid(result.user.uid);
