@@ -326,8 +326,24 @@ function icon(name, label) {
   return `<i data-lucide="${name}" aria-label="${label || name}"></i>`;
 }
 
+let _lucideWaiting = false;
+
 function syncIcons() {
-  if (window.lucide) window.lucide.createIcons();
+  if (window.lucide) {
+    window.lucide.createIcons();
+    return;
+  }
+  if (_lucideWaiting) return;
+  _lucideWaiting = true;
+  const waitForLucide = () => {
+    if (window.lucide) {
+      window.lucide.createIcons();
+      _lucideWaiting = false;
+    } else {
+      setTimeout(waitForLucide, 50);
+    }
+  };
+  waitForLucide();
 }
 
 function setState(patch) {
@@ -669,7 +685,18 @@ function renderShell(content) {
                 <span class="result-card-badge">+60% avg increase</span>
               </div>
               <h3>The USD Offer</h3>
-              <div class="result-card-image"></div>
+              <div class="result-card-image">
+                <div class="offer-row offer-row--before">
+                  <span class="offer-row-label">Bogotá market rate</span>
+                  <div class="offer-row-track"><span class="offer-row-fill" style="width:58%"></span></div>
+                  <span class="offer-row-value">$1,150</span>
+                </div>
+                <div class="offer-row offer-row--after">
+                  <span class="offer-row-label">Nearwork USD offer</span>
+                  <div class="offer-row-track"><span class="offer-row-fill" style="width:100%"></span></div>
+                  <span class="offer-row-value">$1,850</span>
+                </div>
+              </div>
               <div class="result-person">
                 <span class="mini-avatar">VM</span>
                 <div><strong>Valentina M.</strong><small>Operations Lead, Bogotá</small></div>
@@ -679,10 +706,15 @@ function renderShell(content) {
         </div>
         <div class="testimonial">
           ${icon("quote")}
-          <p>"${t0.quote}"</p>
-          <div class="testimonial-person">
-            <span class="mini-avatar">${t0.initials}</span>
-            <div><strong>${t0.name}</strong><small>${t0.role}, ${t0.city}</small></div>
+          <div class="testimonial-content">
+            <p>"${t0.quote}"</p>
+            <div class="testimonial-person">
+              <span class="mini-avatar">${t0.initials}</span>
+              <div><strong>${t0.name}</strong><small>${t0.role}, ${t0.city}</small></div>
+            </div>
+          </div>
+          <div class="testimonial-dots">
+            ${candidateTestimonials.map((_, i) => `<span class="testimonial-dot${i === 0 ? " is-active" : ""}"></span>`).join("")}
           </div>
         </div>
         <div class="stats-bar">
@@ -704,16 +736,22 @@ function renderShell(content) {
       testimonialTimer = null;
       return;
     }
-    testimonialIndex = (testimonialIndex + 1) % candidateTestimonials.length;
-    const t = candidateTestimonials[testimonialIndex];
-    const quote = container.querySelector("p");
-    const avatar = container.querySelector(".mini-avatar");
-    const name = container.querySelector(".testimonial-person strong");
-    const role = container.querySelector(".testimonial-person small");
-    if (quote) quote.textContent = `"${t.quote}"`;
-    if (avatar) avatar.textContent = t.initials;
-    if (name) name.textContent = t.name;
-    if (role) role.textContent = `${t.role}, ${t.city}`;
+    const content = container.querySelector(".testimonial-content");
+    content.classList.add("is-flipping");
+    setTimeout(() => {
+      testimonialIndex = (testimonialIndex + 1) % candidateTestimonials.length;
+      const t = candidateTestimonials[testimonialIndex];
+      const quote = content.querySelector("p");
+      const avatar = content.querySelector(".mini-avatar");
+      const name = content.querySelector(".testimonial-person strong");
+      const role = content.querySelector(".testimonial-person small");
+      if (quote) quote.textContent = `"${t.quote}"`;
+      if (avatar) avatar.textContent = t.initials;
+      if (name) name.textContent = t.name;
+      if (role) role.textContent = `${t.role}, ${t.city}`;
+      container.querySelectorAll(".testimonial-dot").forEach((dot, i) => dot.classList.toggle("is-active", i === testimonialIndex));
+      content.classList.remove("is-flipping");
+    }, 320);
   }, 6000);
 }
 
@@ -729,6 +767,10 @@ function renderLogin(mode = "login") {
         <h2>${isSignup ? "Create your account." : "Welcome back."}</h2>
         <p>${isSignup ? "Create your profile, browse roles, and track your application." : "Log in to your dashboard to manage applications and interview requests."}</p>
       </div>
+      <ul class="trust-points">
+        <li>${icon("check-circle-2")} 100% free for candidates, always</li>
+        <li>${icon("check-circle-2")} Real interviews with vetted US teams</li>
+      </ul>
       ${state.message ? `<div class="notice">${icon("lock")} ${escapeAttr(state.message)}</div>` : ""}
       ${hasFirebaseConfig ? "" : `<div class="notice">${icon("triangle-alert")} Sign-in is still being set up.</div>`}
       <button id="googleSignIn" class="social-action" type="button">
