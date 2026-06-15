@@ -906,15 +906,6 @@ function renderDashboard() {
           </div>
         </button>
 
-        <!-- Profile card -->
-        <div class="nw-sidebar-profile">
-          ${avatarMarkup()}
-          <div class="nw-sidebar-profile-text">
-            <div class="nw-sidebar-profile-name">${escapeHtml(name)}</div>
-            <div class="nw-sidebar-profile-role">${escapeHtml(headline)}</div>
-          </div>
-        </div>
-
         <!-- Nav sections -->
         <nav class="nw-sidebar-nav">
           ${navSections().map(sec => `
@@ -933,6 +924,15 @@ function renderDashboard() {
             </a>
           </div>
         </nav>
+
+        <!-- Profile card -->
+        <div class="nw-sidebar-profile">
+          ${avatarMarkup()}
+          <div class="nw-sidebar-profile-text">
+            <div class="nw-sidebar-profile-name">${escapeHtml(name)}</div>
+            <div class="nw-sidebar-profile-role">${escapeHtml(headline)}</div>
+          </div>
+        </div>
 
         <!-- Sign out -->
         <button id="${state.user ? "signOut" : "signIn"}" class="nw-sidebar-signout" type="button">
@@ -2662,18 +2662,24 @@ function renderProfileForm(mode = "profile") {
 
           <!-- ── Compensation ── -->
           <div class="pf-card">
-            ${pfCardHead("banknote", "Compensation & English")}
-            <div class="pf-field-row pf-field-row--3">
-              <label class="pf-field">
-                ${pfLabel("Target monthly salary")}
-                <div class="pf-salary-wrap">
-                  <select id="salaryCurrencyInput" name="salaryCurrency" class="pf-currency-select">
-                    <option value="USD" ${normalizedSalary.salaryCurrency === "USD" ? "selected" : ""}>USD</option>
-                    <option value="COP" ${normalizedSalary.salaryCurrency === "COP" ? "selected" : ""}>COP</option>
-                  </select>
-                  <input class="pf-input pf-salary-input" id="salaryInput" name="salary" value="${escapeAttr(normalizedSalary.salary || "")}" inputmode="numeric" placeholder="2,500" />
-                </div>
-              </label>
+            ${pfCardHead("banknote", "Compensation")}
+            <label class="pf-field" style="max-width:280px;">
+              ${pfLabel("Target monthly salary")}
+              <div class="pf-salary-wrap">
+                <select id="salaryCurrencyInput" name="salaryCurrency" class="pf-currency-select">
+                  <option value="USD" ${normalizedSalary.salaryCurrency === "USD" ? "selected" : ""}>USD</option>
+                  <option value="COP" ${normalizedSalary.salaryCurrency === "COP" ? "selected" : ""}>COP</option>
+                </select>
+                <input class="pf-input pf-salary-input" id="salaryInput" name="salary" value="${escapeAttr(normalizedSalary.salaryAmount ? formatSalaryInputValue(normalizedSalary.salaryAmount, normalizedSalary.salaryCurrency) : "")}" inputmode="numeric" placeholder="2,500" />
+              </div>
+              <span class="pf-hint">How much you're looking for, per month.</span>
+            </label>
+          </div>
+
+          <!-- ── English & languages ── -->
+          <div class="pf-card">
+            ${pfCardHead("languages", "English & languages")}
+            <div class="pf-field-row">
               <label class="pf-field">
                 ${pfLabel("English level")}
                 <select class="pf-input" name="english">

@@ -162,6 +162,16 @@ async function getCandidateForAuthUser(user) {
   return { ...emailProfile, id: user.uid, connectedFromUserId: emailProfile.id };
 }
 
+// Fetches the existing ATS candidate doc (if any) and layers `data` on top
+// before mapping through toAtsCandidate(), so partial updates (e.g. just
+// `{ onboarded: true }`) don't blow away workHistory/skills/etc. with the
+// empty defaults toAtsCandidate() falls back to for fields it never received.
+async function mergeAtsCandidate(uid, candidateCode, data) {
+  const existing = await getDoc(doc(db, collections.candidates, candidateCode)).catch(() => null);
+  const base = existing?.exists() ? existing.data() : {};
+  return toAtsCandidate(uid, { ...base, ...data, candidateCode });
+}
+
 async function upsertCandidate(uid, data) {
   requireFirebase();
   const candidateCode = data.candidateCode || candidateCodeForUid(uid);
@@ -173,7 +183,7 @@ async function upsertCandidate(uid, data) {
   };
   await setDoc(doc(db, collections.users, uid), payload, { merge: true });
   // Mirror to ATS candidates collection so every account appears in Admin immediately
-  await setDoc(doc(db, collections.candidates, candidateCode), toAtsCandidate(uid, { ...payload, candidateCode }), { merge: true }).catch(() => null);
+  await setDoc(doc(db, collections.candidates, candidateCode), await mergeAtsCandidate(uid, candidateCode, { ...payload, candidateCode }), { merge: true }).catch(() => null);
   // Only sync to HubSpot if the candidate gave marketing consent
   if (data.marketingConsent === true) {
     syncCandidateToHubSpot({ ...payload, candidateCode, source: "talent.nearwork.co" }).catch(() => null);
@@ -531,7 +541,7 @@ async function updateCandidateProfile(uid, data) {
     updatedAt: serverTimestamp()
   }, { merge: true });
   try {
-    await setDoc(doc(db, collections.candidates, candidateCode), toAtsCandidate(uid, {
+    await setDoc(doc(db, collections.candidates, candidateCode), await mergeAtsCandidate(uid, candidateCode, {
       ...data,
       candidateCode
     }), { merge: true });

@@ -4528,13 +4528,15 @@ textarea:focus {
   padding: 0 10px;
   outline: none;
   cursor: pointer;
-  min-width: 60px;
+  flex: 0 0 70px;
+  width: 70px;
 }
 
 .pf-salary-input {
   border: none;
   border-radius: 0;
   flex: 1;
+  min-width: 0;
   min-height: 40px;
 }
 
