@@ -42,6 +42,7 @@ let _onbData         = {};   // accumulated answers from steps 1-4
 let _onbCvFile       = null; // File object selected in step 1
 let _onbParsePromise = null; // in-flight Affinda request
 let _onbParsed       = null; // resolved Affinda result
+let _onbInitialized  = false; // guards against wiping wizard progress on background re-renders
 
 const app = document.querySelector("#app");
 const SUPPORT_WHATSAPP = "+573135928691";
@@ -1464,30 +1465,37 @@ function renderOverview() {
 }
 
 function renderOnboarding() {
-  _onbStep = 1;
-  // Pre-populate from any data already collected (e.g. from jobs.nearwork.co account creation)
-  // so the candidate doesn't have to re-enter what they've already provided.
-  const c = state.candidate || {};
-  const nameParts = String(c.name || "").trim().split(/\s+/).filter(Boolean);
-  _onbData = {
-    roleGroup:  c.roleGroup  || "",
-    targetRole: c.targetRole || "",
-    department: c.department || c.locationDepartment || "",
-    city:       c.city       || c.locationCity       || "",
-    english:    c.english    || "",
-    firstName:  c.firstName  || nameParts[0] || "",
-    lastName:   c.lastName   || nameParts.slice(1).join(" ") || "",
-    phone:      c.phone || c.whatsapp || "",
-    currentRole: c.currentRole || "",
-    expectedSalaryUSD: c.expectedSalaryUSD || (c.salaryCurrency !== "COP" ? c.salaryAmount : null) || "",
-    expectedSalaryCOP: c.expectedSalaryCOP || (c.salaryCurrency === "COP" ? c.salaryAmount : null) || "",
-    linkedin:   c.linkedin   || "",
-    experience: Array.isArray(c.workHistory) ? c.workHistory.map(w => ({ ...w })) : [],
-    languages:  Array.isArray(c.languages) ? [...c.languages] : [],
-    skills:     Array.isArray(c.skills) ? [...c.skills] : [],
-    certifications: Array.isArray(c.certifications) ? c.certifications.map(x => ({ ...x })) : [],
-  };
-  _onbCvFile = null; _onbParsePromise = null; _onbParsed = null;
+  // Only seed wizard state the first time the wizard is shown for this session.
+  // renderDashboard() (and therefore renderOnboarding()) can be re-invoked in the
+  // background — e.g. a live notifications snapshot update — and re-running this
+  // setup would wipe whatever step/CV/answers the candidate has already entered.
+  if (!_onbInitialized) {
+    _onbInitialized = true;
+    _onbStep = 1;
+    // Pre-populate from any data already collected (e.g. from jobs.nearwork.co account creation)
+    // so the candidate doesn't have to re-enter what they've already provided.
+    const c = state.candidate || {};
+    const nameParts = String(c.name || "").trim().split(/\s+/).filter(Boolean);
+    _onbData = {
+      roleGroup:  c.roleGroup  || "",
+      targetRole: c.targetRole || "",
+      department: c.department || c.locationDepartment || "",
+      city:       c.city       || c.locationCity       || "",
+      english:    c.english    || "",
+      firstName:  c.firstName  || nameParts[0] || "",
+      lastName:   c.lastName   || nameParts.slice(1).join(" ") || "",
+      phone:      c.phone || c.whatsapp || "",
+      currentRole: c.currentRole || "",
+      expectedSalaryUSD: c.expectedSalaryUSD || (c.salaryCurrency !== "COP" ? c.salaryAmount : null) || "",
+      expectedSalaryCOP: c.expectedSalaryCOP || (c.salaryCurrency === "COP" ? c.salaryAmount : null) || "",
+      linkedin:   c.linkedin   || "",
+      experience: Array.isArray(c.workHistory) ? c.workHistory.map(w => ({ ...w })) : [],
+      languages:  Array.isArray(c.languages) ? [...c.languages] : [],
+      skills:     Array.isArray(c.skills) ? [...c.skills] : [],
+      certifications: Array.isArray(c.certifications) ? c.certifications.map(x => ({ ...x })) : [],
+    };
+    _onbCvFile = null; _onbParsePromise = null; _onbParsed = null;
+  }
   return `<div id="onboardingWizard" class="onb-shell"></div>`;
 }
 
@@ -3133,6 +3141,7 @@ function bindDashboardEvents() {
     await signOut(auth);
     if (notificationUnsubscribe) notificationUnsubscribe();
     notificationUnsubscribe = null;
+    _onbInitialized = false;
     window.history.pushState({ page: "overview" }, "", "/");
     setState({ user: null, candidate: null, applications: [], assessments: [], jobs: [], view: "login", activePage: "overview", message: "" });
   });
@@ -3158,6 +3167,7 @@ function bindDashboardEvents() {
       await signOut(auth);
       if (notificationUnsubscribe) notificationUnsubscribe();
       notificationUnsubscribe = null;
+      _onbInitialized = false;
       window.history.pushState({ page: "overview" }, "", "/");
       setState({
         user: null,
