@@ -67,7 +67,7 @@ const collections = {
   notificationPreferences: "notificationPreferences"
 };
 
-const emailApiUrl = import.meta.env.VITE_EMAIL_API_URL || "https://admin.nearwork.co/api/send-email";
+const emailApiUrl = import.meta.env.VITE_EMAIL_API_URL || "/api/send-email-proxy";
 
 function requireFirebase() {
   if (!app || !auth || !db || !storage) {
