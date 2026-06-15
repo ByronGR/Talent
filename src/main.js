@@ -747,8 +747,9 @@ async function loadDashboard(user) {
     //  - accounts created via jobs.nearwork.co that have no targetRole or onboarded flag yet
     // Skip wizard for existing candidates who already have a complete profile (they
     // just lack the onboarded flag) — silently mark them as onboarded instead.
-    const needsWizard = !candidate?.onboarded && !candidate?.targetRole;
-    const hasProfile  = !candidate?.onboarded && candidate?.targetRole;
+    const hasTargetRole = Boolean(candidate?.targetRole || (!isPlaceholderRole(candidate?.headline) && candidate?.headline));
+    const needsWizard = !candidate?.onboarded && !hasTargetRole;
+    const hasProfile  = !candidate?.onboarded && hasTargetRole;
     if (hasProfile) {
       // Existing candidate missing the flag — backfill it silently
       updateCandidateProfile(user.uid, { onboarded: true, candidateCode: candidate?.candidateCode }).catch(() => null);
@@ -2764,12 +2765,9 @@ function renderProfileForm(mode = "profile") {
 }
 
 function profileCompletion() {
-  const fields = ["name", "targetRole", "department", "city", "english", "salary", "whatsapp"];
-  const filled = fields.filter((field) => {
-    if (field === "targetRole") return Boolean(state.candidate?.targetRole || (!isPlaceholderRole(state.candidate?.headline) && state.candidate?.headline));
-    return Boolean(state.candidate?.[field]);
-  }).length + (candidateSkills().length ? 1 : 0);
-  return Math.max(25, Math.round((filled / (fields.length + 1)) * 100));
+  const checklist = profileChecklist();
+  const done = checklist.filter((c) => c.done).length;
+  return Math.max(25, Math.round((done / checklist.length) * 100));
 }
 
 function currentStage() {
