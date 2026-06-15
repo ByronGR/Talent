@@ -13,6 +13,11 @@
   --gray-3: #D8D8D8;
   --gray-5: #5C6066;
   --gray-6: #333333;
+  --border: var(--gray-3);
+  --light: var(--gray-5);
+  --mid: var(--gray-5);
+  --ink: var(--black);
+  --font: Poppins, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --pp-bg: #FFFFFF;
   --pp-surface: #FFFFFF;
   --pp-ink: #15171C;
@@ -3119,6 +3124,7 @@ textarea:focus {
   border: 1.5px solid var(--border);
   border-radius: 16px;
   padding: 32px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
 }
 
 .onb-heading {

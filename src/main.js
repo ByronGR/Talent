@@ -52,6 +52,8 @@ const roleGroups = {
     "Customer Success Manager",
     "Customer Success Associate",
     "Account Manager",
+    "Technical Account Manager",
+    "Client Success Specialist",
     "Implementation Specialist",
     "Onboarding Specialist",
     "Renewals Manager"
@@ -60,12 +62,17 @@ const roleGroups = {
     "SDR / Sales Development Rep",
     "BDR / Business Development Rep",
     "Account Executive",
+    "Inside Sales Representative",
+    "Channel Sales Manager",
     "Sales Operations Specialist",
+    "Revenue Operations Specialist",
     "Sales Manager"
   ],
   Support: [
     "Technical Support Specialist",
     "Customer Support Representative",
+    "Help Desk Technician",
+    "Escalations Specialist",
     "Support Team Lead",
     "QA Support Analyst"
   ],
@@ -73,30 +80,61 @@ const roleGroups = {
     "Operations Manager",
     "Operations Analyst",
     "Executive Assistant",
+    "Administrative Assistant",
     "Virtual Assistant",
+    "Office Manager",
     "Project Coordinator",
+    "Procurement Specialist",
+    "Logistics Coordinator",
     "Recruiting Coordinator"
   ],
   Marketing: [
     "Marketing Ops / Content Specialist",
     "Content Writer",
     "SEO Specialist",
+    "Email Marketing Specialist",
     "Lifecycle Marketing Specialist",
-    "Social Media Manager"
+    "Social Media Manager",
+    "Graphic Designer",
+    "Growth Marketing Specialist"
   ],
   Engineering: [
     "Software Developer (Full Stack)",
     "Frontend Developer",
     "Backend Developer",
+    "Mobile Developer",
+    "DevOps Engineer",
     "No-Code Developer",
     "Data Analyst",
-    "QA Engineer"
+    "Data Engineer",
+    "QA Engineer",
+    "Product Manager"
   ],
   Finance: [
     "Bookkeeper",
     "Accounting Assistant",
+    "Accounts Payable / Receivable Specialist",
     "Financial Analyst",
-    "Payroll Specialist"
+    "FP&A Analyst",
+    "Payroll Specialist",
+    "Tax Analyst"
+  ],
+  "Human Resources": [
+    "HR Generalist",
+    "Recruiter / Talent Sourcer",
+    "People Operations Specialist",
+    "Payroll & Benefits Coordinator",
+    "Learning & Development Coordinator"
+  ],
+  "Healthcare & Insurance": [
+    "Insurance Account Manager",
+    "Claims Specialist",
+    "Medical Billing Specialist",
+    "Healthcare Virtual Assistant",
+    "Patient Coordinator"
+  ],
+  Other: [
+    "Other / Not Listed"
   ]
 };
 
@@ -1495,7 +1533,7 @@ function _onbSelect(id, options, selected) {
 function _onbActions(backStep, nextLabel) {
   return `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:28px;">
     ${backStep ? `<button type="button" id="onbBack" class="secondary-action">← Back</button>` : `<span></span>`}
-    <button type="button" id="onbNext" class="primary-action">${nextLabel || "Continue →"}</button>
+    <button type="button" id="onbNext" class="primary-action fit">${nextLabel || "Continue →"}</button>
   </div>`;
 }
 
@@ -1520,7 +1558,7 @@ function _onbStepHtml(step) {
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:24px;">
             <button type="button" id="onbSkipCv" style="background:none;border:none;font-size:13px;color:var(--light);cursor:pointer;text-decoration:underline;padding:0;">Skip — I'll fill in manually</button>
-            <button type="button" id="onbNext" class="primary-action" ${hasFile ? "" : "disabled"}>Continue →</button>
+            <button type="button" id="onbNext" class="primary-action fit" ${hasFile ? "" : "disabled"}>Continue →</button>
           </div>
         </div>`;
     }
@@ -1667,7 +1705,7 @@ function _onbReviewHtml() {
 
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <button type="button" id="onbEdit" class="secondary-action">← Edit</button>
-        <button type="button" id="onbFinish" class="primary-action">${icon("check")} Finish setup</button>
+        <button type="button" id="onbFinish" class="primary-action fit">${icon("check")} Finish setup</button>
       </div>
       <p id="onbFinishErr" style="font-size:12px;color:#e74c3c;text-align:right;min-height:18px;margin-top:6px;"></p>
     </div>`;
