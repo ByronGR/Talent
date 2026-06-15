@@ -547,7 +547,49 @@ function friendlyAuthError(error) {
   return "Something went wrong. Please try again or contact Nearwork support.";
 }
 
+const candidateTestimonials = [
+  {
+    initials: "CP",
+    name: "Camila P.",
+    role: "Product Designer",
+    city: "Medellín",
+    quote: "I doubled my income and kept living in Medellín. The whole process took 19 days from apply to signed offer.",
+  },
+  {
+    initials: "AR",
+    name: "Andrés R.",
+    role: "SDR",
+    city: "Bogotá",
+    quote: "I went from chasing local leads to running outbound for a US SaaS team — same desk, way better pay.",
+  },
+  {
+    initials: "LG",
+    name: "Laura G.",
+    role: "Customer Success Manager",
+    city: "Cali",
+    quote: "No recruiters ghosting me. One profile, real interviews, and an offer that actually matched the role.",
+  },
+  {
+    initials: "FT",
+    name: "Felipe T.",
+    role: "Sales Ops Analyst",
+    city: "Bucaramanga",
+    quote: "The matching was spot on. I only talked to teams that fit what I was looking for, and signed within a month.",
+  },
+  {
+    initials: "DV",
+    name: "Daniela V.",
+    role: "Account Executive",
+    city: "Cartagena",
+    quote: "Now I'm closing deals for a US company in USD, still based in Cartagena. Best career move I've made.",
+  },
+];
+
+let testimonialTimer = null;
+
 function renderShell(content) {
+  if (testimonialTimer) clearInterval(testimonialTimer);
+  const t0 = candidateTestimonials[0];
   app.innerHTML = `
     <main class="app-shell">
       <section class="brand-panel">
@@ -555,58 +597,119 @@ function renderShell(content) {
         <div class="left-grid"></div>
         <div class="brand-top">
           <span class="wordmark">Near<span>work</span></span>
-          <a href="https://nearwork.co">Back</a>
+          <a class="back-home" href="https://nearwork.co">/ Back to home</a>
         </div>
         <div class="brand-copy">
-          <h1>Your next great job<br><span>is waiting for you.</span></h1>
-          <p>Join Colombian professionals working with top US SaaS companies, earning in USD, working remotely, with full transparency at every stage.</p>
-          <div class="stats">
-            <div><strong>60%</strong><small>Avg. salary increase</small></div>
-            <div><strong>21d</strong><small>Days to first interview</small></div>
-            <div><strong>USD</strong><small>Remote roles</small></div>
+          <h1>The bridge to your<br><span>next big leap.</span></h1>
+          <p>A transparent journey from your current role to a world-class US career, paid in USD.</p>
+        </div>
+        <div class="journey">
+          <div class="journey-step">
+            <span class="journey-dot"></span>
+            <p class="journey-step-label">Step 01</p>
+            <h3>Apply once</h3>
+            <p>Join 5,000+ Colombian pros. Your profile is your permanent ticket to high-growth US SaaS roles.</p>
+          </div>
+          <div class="journey-step">
+            <span class="journey-dot"></span>
+            <p class="journey-step-label">Step 02</p>
+            <h3>21 Days to a US Company</h3>
+            <p>Our matching engine skips the noise. In as little as 21 days you're interviewing — and signing — with a vetted US company, earning in USD.</p>
+            <div class="journey-tags"><span>Sales Ops</span><span>SDR</span><span>CSM</span></div>
+          </div>
+          <div class="journey-step journey-result">
+            <span class="journey-dot"></span>
+            <div class="result-card">
+              <div class="result-card-head">
+                <p class="result-card-label">The result</p>
+                <span class="result-card-badge">+60% avg increase</span>
+              </div>
+              <h3>The USD Offer</h3>
+              <div class="result-card-image"></div>
+              <div class="result-person">
+                <span class="mini-avatar">VM</span>
+                <div><strong>Valentina M.</strong><small>Operations Lead, Bogotá</small></div>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="role-strip">
-          <p>Roles we place</p>
-          <span>Customer Success</span>
-          <span>SDR</span>
-          <span>Technical Support</span>
-          <span>Marketing Ops</span>
-          <span>Operations</span>
+        <div class="testimonial">
+          ${icon("quote")}
+          <p>"${t0.quote}"</p>
+          <div class="testimonial-person">
+            <span class="mini-avatar">${t0.initials}</span>
+            <div><strong>${t0.name}</strong><small>${t0.role}, ${t0.city}</small></div>
+          </div>
+        </div>
+        <div class="stats-bar">
+          <div><strong>60%</strong><small>Salary bump</small></div>
+          <div><strong>21d</strong><small>To a US offer</small></div>
+          <div><strong>USD</strong><small>Remote only</small></div>
         </div>
       </section>
       ${content}
     </main>
   `;
   syncIcons();
+
+  let testimonialIndex = 0;
+  testimonialTimer = setInterval(() => {
+    const container = document.querySelector(".testimonial");
+    if (!container) {
+      clearInterval(testimonialTimer);
+      testimonialTimer = null;
+      return;
+    }
+    testimonialIndex = (testimonialIndex + 1) % candidateTestimonials.length;
+    const t = candidateTestimonials[testimonialIndex];
+    const quote = container.querySelector("p");
+    const avatar = container.querySelector(".mini-avatar");
+    const name = container.querySelector(".testimonial-person strong");
+    const role = container.querySelector(".testimonial-person small");
+    if (quote) quote.textContent = `"${t.quote}"`;
+    if (avatar) avatar.textContent = t.initials;
+    if (name) name.textContent = t.name;
+    if (role) role.textContent = `${t.role}, ${t.city}`;
+  }, 6000);
 }
 
 function renderLogin(mode = "login") {
   const isSignup = mode === "signup";
   renderShell(`
     <section class="auth-panel">
-      <div class="right-brand">Near<span>work</span></div>
-      <div class="candidate-chip">For candidates</div>
+      <div class="auth-top">
+        <div class="right-brand">Near<span>work</span></div>
+        <div class="candidate-chip">For candidates</div>
+      </div>
       <div class="panel-heading">
         <h2>${isSignup ? "Create your account." : "Welcome back."}</h2>
-        <p>${isSignup ? "Create your profile, browse roles, and track your application." : "Use Google if your candidate account was created with Google."}</p>
+        <p>${isSignup ? "Create your profile, browse roles, and track your application." : "Log in to your dashboard to manage applications and interview requests."}</p>
       </div>
       ${state.message ? `<div class="notice">${icon("lock")} ${escapeAttr(state.message)}</div>` : ""}
       ${hasFirebaseConfig ? "" : `<div class="notice">${icon("triangle-alert")} Sign-in is still being set up.</div>`}
       <button id="googleSignIn" class="social-action" type="button">
-        <span class="google-dot">G</span>
+        <svg class="google-icon" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
+          <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
+          <path fill="#FBBC05" d="M3.964 10.706A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.038l3.007-2.332z"/>
+          <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.962L3.964 7.294C4.672 5.167 6.656 3.58 9 3.58z"/>
+        </svg>
         Continue with Google
       </button>
-      <div class="divider"><span></span>or use email<span></span></div>
+      <div class="divider"><span></span>or email<span></span></div>
       <form id="authForm" class="stacked-form">
-        ${isSignup ? `<label>Full name<input name="name" type="text" autocomplete="name" placeholder="Full name" required /></label>` : ""}
-        <label>Email<input name="email" type="email" autocomplete="email" placeholder="you@example.com" required /></label>
-        <label>Password
+        ${isSignup ? `<label class="field-label">Full name<input name="name" type="text" autocomplete="name" placeholder="Full name" required /></label>` : ""}
+        <label class="field-label">Email address<input name="email" type="email" autocomplete="email" placeholder="you@example.com" required /></label>
+        <div class="field-group">
+          <div class="label-row">
+            <label class="field-label" for="passwordInput">Password</label>
+            ${isSignup ? "" : `<button type="button" id="resetPassword" class="forgot-link">Forgot?</button>`}
+          </div>
           <div class="password-field">
-            <input name="password" type="password" autocomplete="${isSignup ? "new-password" : "current-password"}" minlength="6" placeholder="••••••••" required />
+            <input id="passwordInput" name="password" type="password" autocomplete="${isSignup ? "new-password" : "current-password"}" minlength="6" placeholder="••••••••" required />
             <button type="button" class="password-toggle" data-password-toggle aria-label="Show password">${icon("eye")}</button>
           </div>
-        </label>
+        </div>
         ${isSignup ? `
         <div id="consentBlock" style="margin:2px 0 4px;">
           <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:#2d2d2d;line-height:1.5;margin-bottom:3px;">
@@ -619,11 +722,12 @@ function renderLogin(mode = "login") {
             <span>I agree to receive future job opportunities and updates from Nearwork (optional)</span>
           </label>
         </div>` : ""}
-        <button class="primary-action" type="submit">${icon(isSignup ? "user-plus" : "log-in")} ${isSignup ? "Create account" : "Sign in"}</button>
+        <button class="primary-action" type="submit">${isSignup ? `${icon("user-plus")} Create account` : `Sign in ${icon("arrow-right")}`}</button>
         <p id="formMessage" class="form-message" role="status"></p>
       </form>
-      ${isSignup ? "" : `<button id="resetPassword" class="text-action small" type="button">Forgot password?</button>`}
       <button id="toggleMode" class="text-action" type="button">${isSignup ? "Already have an account? Sign in" : "New or invited by Nearwork? Create your profile"}</button>
+      <a class="back-jobboard" href="https://jobs.nearwork.co" target="_blank" rel="noreferrer">${icon("arrow-left")} Back to job board</a>
+      <p class="auth-footer">© ${new Date().getFullYear()} Nearwork Inc. All rights reserved.</p>
     </section>
   `);
 
