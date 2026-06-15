@@ -4277,11 +4277,62 @@ textarea:focus {
   margin-bottom: 24px;
 }
 
+/* Tabs */
+.pf-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #EBEDF0;
+  overflow-x: auto;
+}
+
+.pf-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 11px 16px;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #5C6066;
+  cursor: pointer;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.pf-tab i,
+.pf-tab svg {
+  width: 16px;
+  height: 16px;
+}
+
+.pf-tab:hover {
+  color: #15171C;
+}
+
+.pf-tab.active {
+  color: #0A7C5E;
+  border-bottom-color: #10A07C;
+}
+
 /* Form */
 .pf-form {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.pf-tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pf-tab-panel[hidden] {
+  display: none;
 }
 
 /* Cards */

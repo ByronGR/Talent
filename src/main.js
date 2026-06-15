@@ -2590,163 +2590,188 @@ function renderProfileForm(mode = "profile") {
       </div>
       <div class="pf-progress-label">${done} of ${checklist.length} sections complete</div>
 
+      <!-- Tabs -->
+      <div class="pf-tabs" role="tablist">
+        <button type="button" class="pf-tab active" data-tab="profile">${icon("user-round")} Profile</button>
+        <button type="button" class="pf-tab" data-tab="skills">${icon("sparkles")} Skills</button>
+        <button type="button" class="pf-tab" data-tab="cv">${icon("file-text")} CV</button>
+        <button type="button" class="pf-tab" data-tab="experience">${icon("building-2")} Experience</button>
+        <button type="button" class="pf-tab" data-tab="certifications">${icon("graduation-cap")} Certifications</button>
+      </div>
+
       <form id="profileForm" class="pf-form">
 
-        <!-- ── Identity ── -->
-        <div class="pf-card">
-          ${pfCardHead("user-round", "Identity")}
-          <div class="pf-identity-row">
-            <div class="pf-avatar-upload">
-              ${avatarMarkup("large")}
-              <label class="pf-photo-btn">
-                ${icon("camera")} Change photo
-                <input name="photo" type="file" accept="image/png,image/jpeg,image/webp" style="display:none;" />
+        <!-- ── Profile ── -->
+        <div class="pf-tab-panel" data-tab-panel="profile">
+
+          <!-- ── Identity ── -->
+          <div class="pf-card">
+            ${pfCardHead("user-round", "Identity")}
+            <div class="pf-identity-row">
+              <div class="pf-avatar-upload">
+                ${avatarMarkup("large")}
+                <label class="pf-photo-btn">
+                  ${icon("camera")} Change photo
+                  <input name="photo" type="file" accept="image/png,image/jpeg,image/webp" style="display:none;" />
+                </label>
+              </div>
+              <div class="pf-field" style="flex:1;">
+                ${pfLabel("Full name")}
+                <input class="pf-input" name="name" value="${escapeAttr(state.candidate?.name || state.user?.displayName || "")}" placeholder="Your full name" />
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Role ── -->
+          <div class="pf-card">
+            ${pfCardHead("briefcase-business", "Role applying for")}
+            <div class="pf-field-row">
+              <label class="pf-field">
+                ${pfLabel("Area")}
+                <select class="pf-input" name="roleGroup" id="roleGroupSelect">
+                  ${roleGroupOptions(roleGroup)}
+                </select>
+              </label>
+              <label class="pf-field">
+                ${pfLabel("Target role")}
+                <select class="pf-input" name="targetRole" id="targetRoleSelect">
+                  ${roleOptionsForGroup(roleGroup, selectedRole)}
+                </select>
               </label>
             </div>
-            <div class="pf-field" style="flex:1;">
-              ${pfLabel("Full name")}
-              <input class="pf-input" name="name" value="${escapeAttr(state.candidate?.name || state.user?.displayName || "")}" placeholder="Your full name" />
+          </div>
+
+          <!-- ── Location ── -->
+          <div class="pf-card">
+            ${pfCardHead("map-pin", "Location")}
+            <div class="pf-field-row">
+              <label class="pf-field">
+                ${pfLabel("Department")}
+                <select class="pf-input" name="department" id="departmentSelect">
+                  ${Object.keys(colombiaLocations).map((dept) => `<option value="${escapeAttr(dept)}" ${dept === location.department ? "selected" : ""}>${dept}</option>`).join("")}
+                </select>
+              </label>
+              <label class="pf-field">
+                ${pfLabel("City")}
+                <select class="pf-input" name="city" id="citySelect">
+                  ${cities.map((city) => `<option value="${escapeAttr(city)}" ${city === location.city ? "selected" : ""}>${city}</option>`).join("")}
+                </select>
+              </label>
             </div>
           </div>
-        </div>
 
-        <!-- ── Role ── -->
-        <div class="pf-card">
-          ${pfCardHead("briefcase-business", "Role applying for")}
-          <div class="pf-field-row">
-            <label class="pf-field">
-              ${pfLabel("Area")}
-              <select class="pf-input" name="roleGroup" id="roleGroupSelect">
-                ${roleGroupOptions(roleGroup)}
-              </select>
-            </label>
-            <label class="pf-field">
-              ${pfLabel("Target role")}
-              <select class="pf-input" name="targetRole" id="targetRoleSelect">
-                ${roleOptionsForGroup(roleGroup, selectedRole)}
-              </select>
-            </label>
-          </div>
-        </div>
-
-        <!-- ── Location ── -->
-        <div class="pf-card">
-          ${pfCardHead("map-pin", "Location")}
-          <div class="pf-field-row">
-            <label class="pf-field">
-              ${pfLabel("Department")}
-              <select class="pf-input" name="department" id="departmentSelect">
-                ${Object.keys(colombiaLocations).map((dept) => `<option value="${escapeAttr(dept)}" ${dept === location.department ? "selected" : ""}>${dept}</option>`).join("")}
-              </select>
-            </label>
-            <label class="pf-field">
-              ${pfLabel("City")}
-              <select class="pf-input" name="city" id="citySelect">
-                ${cities.map((city) => `<option value="${escapeAttr(city)}" ${city === location.city ? "selected" : ""}>${city}</option>`).join("")}
-              </select>
-            </label>
-          </div>
-        </div>
-
-        <!-- ── Compensation ── -->
-        <div class="pf-card">
-          ${pfCardHead("banknote", "Compensation & English")}
-          <div class="pf-field-row pf-field-row--3">
-            <label class="pf-field">
-              ${pfLabel("Target monthly salary")}
-              <div class="pf-salary-wrap">
-                <select id="salaryCurrencyInput" name="salaryCurrency" class="pf-currency-select">
-                  <option value="USD" ${normalizedSalary.salaryCurrency === "USD" ? "selected" : ""}>USD</option>
-                  <option value="COP" ${normalizedSalary.salaryCurrency === "COP" ? "selected" : ""}>COP</option>
+          <!-- ── Compensation ── -->
+          <div class="pf-card">
+            ${pfCardHead("banknote", "Compensation & English")}
+            <div class="pf-field-row pf-field-row--3">
+              <label class="pf-field">
+                ${pfLabel("Target monthly salary")}
+                <div class="pf-salary-wrap">
+                  <select id="salaryCurrencyInput" name="salaryCurrency" class="pf-currency-select">
+                    <option value="USD" ${normalizedSalary.salaryCurrency === "USD" ? "selected" : ""}>USD</option>
+                    <option value="COP" ${normalizedSalary.salaryCurrency === "COP" ? "selected" : ""}>COP</option>
+                  </select>
+                  <input class="pf-input pf-salary-input" id="salaryInput" name="salary" value="${escapeAttr(normalizedSalary.salary || "")}" inputmode="numeric" placeholder="2,500" />
+                </div>
+              </label>
+              <label class="pf-field">
+                ${pfLabel("English level")}
+                <select class="pf-input" name="english">
+                  ${["", "B1", "B2", "C1", "C2", "Native"].map((level) => `<option value="${level}" ${state.candidate?.english === level ? "selected" : ""}>${level || "Select level"}</option>`).join("")}
                 </select>
-                <input class="pf-input pf-salary-input" id="salaryInput" name="salary" value="${escapeAttr(normalizedSalary.salary || "")}" inputmode="numeric" placeholder="2,500" />
-              </div>
-            </label>
-            <label class="pf-field">
-              ${pfLabel("English level")}
-              <select class="pf-input" name="english">
-                ${["", "B1", "B2", "C1", "C2", "Native"].map((level) => `<option value="${level}" ${state.candidate?.english === level ? "selected" : ""}>${level || "Select level"}</option>`).join("")}
-              </select>
-            </label>
-            <label class="pf-field">
-              ${pfLabel("Other languages", true)}
-              <input class="pf-input" name="languages" value="${escapeAttr((state.candidate?.languages || []).join(", "))}" placeholder="Spanish, French…" />
-            </label>
+              </label>
+              <label class="pf-field">
+                ${pfLabel("Other languages", true)}
+                <input class="pf-input" name="languages" value="${escapeAttr((state.candidate?.languages || []).join(", "))}" placeholder="Spanish, French…" />
+              </label>
+            </div>
           </div>
-        </div>
 
-        <!-- ── Contact ── -->
-        <div class="pf-card">
-          ${pfCardHead("phone", "Contact")}
-          <div class="pf-field-row">
-            <label class="pf-field">
-              ${pfLabel("WhatsApp number")}
-              <input class="pf-input" name="whatsapp" value="${escapeAttr(state.candidate?.whatsapp || state.candidate?.phone || "")}" inputmode="tel" autocomplete="tel" placeholder="+57 300 123 4567" required />
-            </label>
-            <label class="pf-field">
-              ${pfLabel("LinkedIn", true)}
-              <input class="pf-input" name="linkedin" value="${escapeAttr(state.candidate?.linkedin || "")}" placeholder="https://linkedin.com/in/…" />
-            </label>
+          <!-- ── Contact ── -->
+          <div class="pf-card">
+            ${pfCardHead("phone", "Contact")}
+            <div class="pf-field-row">
+              <label class="pf-field">
+                ${pfLabel("WhatsApp number")}
+                <input class="pf-input" name="whatsapp" value="${escapeAttr(state.candidate?.whatsapp || state.candidate?.phone || "")}" inputmode="tel" autocomplete="tel" placeholder="+57 300 123 4567" required />
+              </label>
+              <label class="pf-field">
+                ${pfLabel("LinkedIn", true)}
+                <input class="pf-input" name="linkedin" value="${escapeAttr(state.candidate?.linkedin || "")}" placeholder="https://linkedin.com/in/…" />
+              </label>
+            </div>
           </div>
+
         </div>
 
         <!-- ── Skills ── -->
-        <div class="pf-card">
-          ${pfCardHead("sparkles", "Skills", skills.length ? `${skills.length} added` : "")}
-          ${skillSearchMarkup(skills)}
+        <div class="pf-tab-panel" data-tab-panel="skills" hidden>
+          <div class="pf-card">
+            ${pfCardHead("sparkles", "Skills", skills.length ? `${skills.length} added` : "")}
+            ${skillSearchMarkup(skills)}
+          </div>
         </div>
 
         <!-- ── CV ── -->
-        <div class="pf-card" id="profileCvCard">
-          ${pfCardHead("file-text", "CV")}
-          <p class="pf-hint">Upload the CV you want Nearwork to use for your applications.</p>
-          ${state.candidate?.activeCvName || state.candidate?.cvUrl ? `
-            <div class="pf-cv-current">
-              <div class="pf-cv-icon">${icon("file-text")}</div>
-              <div class="pf-cv-info">
-                <strong>${escapeHtml(state.candidate.activeCvName || "CV on file")}</strong>
-                <span>Currently active · upload below to replace</span>
-              </div>
-              ${state.candidate.cvUrl ? `<a class="pf-cv-open" href="${escapeAttr(state.candidate.cvUrl)}" target="_blank" rel="noreferrer">${icon("external-link")} Open</a>` : ""}
-            </div>` : ""}
-          <label class="pf-file-label" for="profileCvFileInput">
-            ${icon("upload")} Choose file (.pdf, .doc, .docx)
-          </label>
-          <input id="profileCvFileInput" name="profileCv" type="file" accept=".pdf,.doc,.docx" style="display:none;" />
-          <label class="pf-field" style="margin-top:10px;">
-            ${pfLabel("CV label", true)}
-            <input class="pf-input" name="profileCvLabel" type="text" placeholder="e.g. Customer Success CV" />
-          </label>
-        </div>
-
-        <!-- ── Summary ── -->
-        <div class="pf-card">
-          ${pfCardHead("align-left", "Summary", "optional")}
-          <textarea class="pf-input pf-textarea" name="summary" placeholder="Add a short note about what you do best — 2–3 sentences.">${escapeHtml(state.candidate?.summary || "")}</textarea>
-        </div>
-
-        <!-- ── Work history ── -->
-        <div class="pf-card" id="workHistoryCard">
-          ${pfCardHead("building-2", "Work experience", "optional")}
-          <p class="pf-hint">Add your previous roles so recruiters can see your background.</p>
-          <div id="workEntries" class="pf-entries">
-            ${(state.candidate?.workHistory || []).map((w, i) => workEntryHtml(i, w)).join("")}
+        <div class="pf-tab-panel" data-tab-panel="cv" hidden>
+          <div class="pf-card" id="profileCvCard">
+            ${pfCardHead("file-text", "CV")}
+            <p class="pf-hint">Upload the CV you want Nearwork to use for your applications.</p>
+            ${state.candidate?.activeCvName || state.candidate?.cvUrl ? `
+              <div class="pf-cv-current">
+                <div class="pf-cv-icon">${icon("file-text")}</div>
+                <div class="pf-cv-info">
+                  <strong>${escapeHtml(state.candidate.activeCvName || "CV on file")}</strong>
+                  <span>Currently active · upload below to replace</span>
+                </div>
+                ${state.candidate.cvUrl ? `<a class="pf-cv-open" href="${escapeAttr(state.candidate.cvUrl)}" target="_blank" rel="noreferrer">${icon("external-link")} Open</a>` : ""}
+              </div>` : ""}
+            <label class="pf-file-label" for="profileCvFileInput">
+              ${icon("upload")} Choose file (.pdf, .doc, .docx)
+            </label>
+            <input id="profileCvFileInput" name="profileCv" type="file" accept=".pdf,.doc,.docx" style="display:none;" />
+            <label class="pf-field" style="margin-top:10px;">
+              ${pfLabel("CV label", true)}
+              <input class="pf-input" name="profileCvLabel" type="text" placeholder="e.g. Customer Success CV" />
+            </label>
           </div>
-          <button type="button" id="addWorkEntry" class="pf-add-btn">
-            ${icon("plus")} Add position
-          </button>
+        </div>
+
+        <!-- ── Experience ── -->
+        <div class="pf-tab-panel" data-tab-panel="experience" hidden>
+
+          <!-- ── Summary ── -->
+          <div class="pf-card">
+            ${pfCardHead("align-left", "Summary", "optional")}
+            <textarea class="pf-input pf-textarea" name="summary" placeholder="Add a short note about what you do best — 2–3 sentences.">${escapeHtml(state.candidate?.summary || "")}</textarea>
+          </div>
+
+          <!-- ── Work history ── -->
+          <div class="pf-card" id="workHistoryCard">
+            ${pfCardHead("building-2", "Work experience", "optional")}
+            <p class="pf-hint">Add your previous roles so recruiters can see your background.</p>
+            <div id="workEntries" class="pf-entries">
+              ${(state.candidate?.workHistory || []).map((w, i) => workEntryHtml(i, w)).join("")}
+            </div>
+            <button type="button" id="addWorkEntry" class="pf-add-btn">
+              ${icon("plus")} Add position
+            </button>
+          </div>
+
         </div>
 
         <!-- ── Certifications ── -->
-        <div class="pf-card" id="certCard">
-          ${pfCardHead("graduation-cap", "Certifications &amp; courses", "optional")}
-          <p class="pf-hint">Add certificates, licences, or courses relevant to your work.</p>
-          <div id="certEntries" class="pf-entries">
-            ${(state.candidate?.certifications || []).map((c, i) => certEntryHtml(i, c)).join("")}
+        <div class="pf-tab-panel" data-tab-panel="certifications" hidden>
+          <div class="pf-card" id="certCard">
+            ${pfCardHead("graduation-cap", "Certifications &amp; courses", "optional")}
+            <p class="pf-hint">Add certificates, licences, or courses relevant to your work.</p>
+            <div id="certEntries" class="pf-entries">
+              ${(state.candidate?.certifications || []).map((c, i) => certEntryHtml(i, c)).join("")}
+            </div>
+            <button type="button" id="addCertEntry" class="pf-add-btn">
+              ${icon("plus")} Add certificate
+            </button>
           </div>
-          <button type="button" id="addCertEntry" class="pf-add-btn">
-            ${icon("plus")} Add certificate
-          </button>
         </div>
 
         <input type="hidden" name="mode" value="${mode}" />
@@ -2986,6 +3011,7 @@ function bindDashboardEvents() {
   bindCvAutofill();
   bindWorkHistoryEditor();
   bindCertEditor();
+  bindProfileTabs();
   document.querySelectorAll("[data-apply]").forEach((button) => {
     button.addEventListener("click", async () => {
       const job = state.jobs.map(normalizeRole).find((item) => item.code === button.dataset.apply);
@@ -3297,6 +3323,33 @@ function bindDashboardEvents() {
 // ─── Work history editor (profile page) ──────────────────────────────────────
 // Manages add/remove of work experience rows in the profile form.
 // Entries are read from the DOM on form submit via collectWorkHistory().
+
+// ─── Profile tabs ──────────────────────────────────────────────────────────
+// Switches between the Profile / Skills / CV / Experience / Certifications
+// panels. Hidden panels stay in the DOM (and in the form), so saving still
+// collects every field regardless of which tab is active. If a required
+// field in a hidden tab fails validation on submit, jump to its tab so the
+// browser's validation message is visible.
+
+function bindProfileTabs() {
+  const tabs = document.querySelectorAll(".pf-tab");
+  const panels = document.querySelectorAll(".pf-tab-panel");
+  if (!tabs.length || !panels.length) return;
+
+  const activate = (target) => {
+    tabs.forEach((t) => t.classList.toggle("active", t.dataset.tab === target));
+    panels.forEach((p) => { p.hidden = p.dataset.tabPanel !== target; });
+  };
+
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => activate(tab.dataset.tab));
+  });
+
+  document.querySelector("#profileForm")?.addEventListener("invalid", (event) => {
+    const panel = event.target.closest(".pf-tab-panel");
+    if (panel) activate(panel.dataset.tabPanel);
+  }, true);
+}
 
 function bindWorkHistoryEditor() {
   const container = document.querySelector("#workHistoryCard");
