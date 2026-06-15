@@ -2,6 +2,7 @@ import {
   applyToJob,
   auth,
   createUserWithEmailAndPassword,
+  deleteOwnAccount,
   getCandidateForAuthUser,
   getCandidateAssessment,
   hasFirebaseConfig,
@@ -218,7 +219,10 @@ let state = {
   activePage: "overview",
   matchesFiltered: false,
   message: "",
-  assessmentUiStep: null  // null | "techIntro" | "discIntro"
+  assessmentUiStep: null,  // null | "techIntro" | "discIntro"
+  showDeleteAccountModal: false,
+  deleteAccountStatus: null,  // null | "deleting" | "error"
+  deleteAccountError: ""
 };
 
 let notificationUnsubscribe = null;
@@ -2737,6 +2741,16 @@ function renderProfileForm(mode = "profile") {
             </div>
           </div>
 
+          ${mode === "onboarding" ? "" : `
+          <!-- ── Danger zone ── -->
+          <div class="pf-card pf-danger-card">
+            ${pfCardHead("trash-2", "Delete account")}
+            <p class="pf-hint">Permanently delete your Nearwork profile, resume, applications, and assessment history. This cannot be undone — you can create a new account with the same email later if you change your mind.</p>
+            <button type="button" id="openDeleteAccount" class="pf-danger-btn">
+              ${icon("trash-2")} Delete my account
+            </button>
+          </div>`}
+
         </div>
 
         <!-- ── Skills ── -->
@@ -2820,6 +2834,25 @@ function renderProfileForm(mode = "profile") {
         </div>
 
       </form>
+
+      ${state.showDeleteAccountModal ? `
+      <div class="nw-modal-overlay" id="deleteAccountOverlay">
+        <div class="nw-modal">
+          <h3>Delete your account?</h3>
+          <p>This will permanently delete your profile, resume, applications, and assessment history from Nearwork. This cannot be undone.</p>
+          <label class="pf-field">
+            ${pfLabel("Type DELETE to confirm")}
+            <input class="pf-input" id="deleteConfirmInput" autocomplete="off" />
+          </label>
+          ${state.deleteAccountStatus === "error" ? `<div class="nw-modal-error">${escapeHtml(state.deleteAccountError || "Something went wrong.")}</div>` : ""}
+          <div class="nw-modal-actions">
+            <button type="button" id="cancelDeleteAccount" class="nw-btn-secondary" ${state.deleteAccountStatus === "deleting" ? "disabled" : ""}>Cancel</button>
+            <button type="button" id="confirmDeleteAccount" class="pf-danger-btn" ${state.deleteAccountStatus === "deleting" ? "disabled" : ""}>
+              ${state.deleteAccountStatus === "deleting" ? "Deleting…" : "Delete permanently"}
+            </button>
+          </div>
+        </div>
+      </div>` : ""}
     </div>
   `;
 }
@@ -2954,6 +2987,42 @@ function bindDashboardEvents() {
   document.querySelector("#signIn")?.addEventListener("click", () => {
     window.history.pushState({ page: "overview" }, "", "/");
     setState({ view: "login", activePage: "overview", message: "" });
+  });
+  document.querySelector("#openDeleteAccount")?.addEventListener("click", () => {
+    setState({ showDeleteAccountModal: true, deleteAccountStatus: null, deleteAccountError: "" });
+  });
+  document.querySelector("#cancelDeleteAccount")?.addEventListener("click", () => {
+    setState({ showDeleteAccountModal: false, deleteAccountStatus: null, deleteAccountError: "" });
+  });
+  document.querySelector("#confirmDeleteAccount")?.addEventListener("click", async () => {
+    const confirmValue = document.querySelector("#deleteConfirmInput")?.value?.trim();
+    if (confirmValue !== "DELETE") {
+      setState({ deleteAccountStatus: "error", deleteAccountError: 'Type "DELETE" to confirm.' });
+      return;
+    }
+    setState({ deleteAccountStatus: "deleting" });
+    try {
+      await deleteOwnAccount();
+      await signOut(auth);
+      if (notificationUnsubscribe) notificationUnsubscribe();
+      notificationUnsubscribe = null;
+      window.history.pushState({ page: "overview" }, "", "/");
+      setState({
+        user: null,
+        candidate: null,
+        applications: [],
+        assessments: [],
+        jobs: [],
+        view: "login",
+        activePage: "overview",
+        showDeleteAccountModal: false,
+        deleteAccountStatus: null,
+        deleteAccountError: "",
+        message: "Your account has been deleted. You're welcome to sign up again anytime."
+      });
+    } catch (error) {
+      setState({ deleteAccountStatus: "error", deleteAccountError: error.message || "Failed to delete account." });
+    }
   });
   document.querySelectorAll("[data-page]").forEach((button) => {
     button.addEventListener("click", (e) => {

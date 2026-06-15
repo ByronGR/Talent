@@ -4778,6 +4778,93 @@ textarea:focus {
   color: #9AA0A6;
 }
 
+/* Danger zone */
+.pf-danger-card {
+  border-color: #F1B7B0;
+  background: #FFF6F5;
+}
+
+.pf-danger-card .pf-card-icon {
+  background: #FBDFDB;
+}
+
+.pf-danger-card .pf-card-icon i,
+.pf-danger-card .pf-card-icon svg {
+  color: #C0392B;
+}
+
+.pf-danger-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #E0473C;
+  color: #FFFFFF;
+  border: none;
+  border-radius: 999px;
+  padding: 10px 22px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms;
+}
+
+.pf-danger-btn:hover { background: #C0392B; }
+.pf-danger-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.pf-danger-btn i, .pf-danger-btn svg { width: 14px; height: 14px; }
+
+/* Modal */
+.nw-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(21,23,28,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+}
+
+.nw-modal {
+  background: #FFFFFF;
+  border-radius: 18px;
+  box-shadow: 0 12px 32px rgba(16,24,40,0.18);
+  padding: 24px;
+  max-width: 420px;
+  width: 100%;
+}
+
+.nw-modal h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #15171C;
+}
+
+.nw-modal p {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: #5C6066;
+  line-height: 1.5;
+}
+
+.nw-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.nw-modal-error {
+  padding: 10px 14px;
+  margin-top: 4px;
+  border: 1px solid #F1B7B0;
+  border-radius: 8px;
+  background: #FFF6F5;
+  color: #C0392B;
+  font-size: 13px;
+}
+
 /* Responsive */
 @media (max-width: 640px) {
   .pf-field-row    { grid-template-columns: 1fr; }

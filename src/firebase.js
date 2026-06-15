@@ -555,6 +555,21 @@ async function updateCandidateProfile(uid, data) {
   }
 }
 
+async function deleteOwnAccount() {
+  requireFirebase();
+  const idToken = await auth.currentUser?.getIdToken();
+  if (!idToken) throw new Error("You must be signed in to delete your account.");
+  const response = await fetch("/api/delete-account", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${idToken}` }
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || "Failed to delete account.");
+  }
+  return data;
+}
+
 async function syncCandidateToHubSpot(candidate) {
   const email = candidate?.email || auth.currentUser?.email || "";
   if (!email) return { ok: false, skipped: true };
@@ -713,6 +728,7 @@ export {
   applyToJob,
   auth,
   createUserWithEmailAndPassword,
+  deleteOwnAccount,
   findCandidateByEmail,
   getCandidate,
   getCandidateForAuthUser,
