@@ -10,7 +10,7 @@
 // (GCP_WIF_AUDIENCE) configured on this project, since candidates can't delete
 // users/{uid} or candidates/{code} under Firestore rules (Admin-only).
 
-import { adminAuth, adminDb, adminStorage } from './_lib/firebase-admin.js';
+import { adminAuth, adminDb, adminBucket } from './_lib/firebase-admin.js';
 
 function candidateCodeForUid(uid) {
   const stableId = String(uid || '').replace(/[^a-z0-9]/gi, '').slice(0, 8).toUpperCase();
@@ -18,7 +18,7 @@ function candidateCodeForUid(uid) {
 }
 
 async function deleteStoragePrefix(prefix) {
-  const bucket = adminStorage().bucket();
+  const bucket = adminBucket();
   const [files] = await bucket.getFiles({ prefix });
   await Promise.all(files.map((file) => file.delete().catch(() => null)));
 }

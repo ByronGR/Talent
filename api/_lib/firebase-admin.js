@@ -5,6 +5,7 @@ import { getStorage } from 'firebase-admin/storage';
 import { ExternalAccountClient } from 'google-auth-library';
 import { getVercelOidcToken } from '@vercel/functions/oidc';
 import { Firestore } from '@google-cloud/firestore';
+import { Storage } from '@google-cloud/storage';
 
 // Server-only Firebase Admin SDK. Credentials are resolved at runtime, in order:
 //   1. FIREBASE_SERVICE_ACCOUNT — a service-account JSON string (only works if the
@@ -61,6 +62,29 @@ function vercelWifCredential() {
   };
 }
 
+// Raw ExternalAccountClient for libraries that take a `google-auth-library`
+// AuthClient directly (Firestore's `auth` option, @google-cloud/storage's
+// `authClient` option) — as opposed to vercelWifCredential()'s wrapper, which
+// matches firebase-admin's `credential` interface.
+function buildWifAuthClient() {
+  const audience = process.env.GCP_WIF_AUDIENCE;
+  if (!audience) return null;
+
+  const saEmail = process.env.FIREBASE_SA_EMAIL || DEFAULT_SA_EMAIL;
+  return ExternalAccountClient.fromJSON({
+    type: 'external_account',
+    audience,
+    subject_token_type: 'urn:ietf:params:oauth:token-type:jwt',
+    token_url: 'https://sts.googleapis.com/v1/token',
+    service_account_impersonation_url:
+      `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${saEmail}:generateAccessToken`,
+    scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+    subject_token_supplier: {
+      getSubjectToken: async () => getVercelOidcToken(),
+    },
+  });
+}
+
 function adminApp() {
   if (cachedApp) return cachedApp;
   if (getApps().length) {
@@ -104,8 +128,34 @@ export function adminAuth() {
   return getAuth(adminApp());
 }
 
+let cachedStorage = null;
+
 export function adminStorage() {
-  return getStorage(adminApp());
+  if (cachedStorage) return cachedStorage;
+
+  const authClient = buildWifAuthClient();
+  if (authClient) {
+    // firebase-admin's getStorage() rejects non-certificate/ADC credentials
+    // ("Must initialize the SDK with a certificate credential or application
+    // default credentials to use Cloud Storage API"). Bypass it by
+    // constructing @google-cloud/storage directly with the ExternalAccountClient.
+    cachedStorage = new Storage({
+      projectId: process.env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID,
+      authClient,
+    });
+    return cachedStorage;
+  }
+
+  cachedStorage = getStorage(adminApp());
+  return cachedStorage;
+}
+
+// adminStorage().bucket() only has a default bucket name when backed by
+// firebase-admin's Storage; the raw @google-cloud/storage client needs an
+// explicit name, so always pass one.
+export function adminBucket() {
+  const bucketName = process.env.FIREBASE_STORAGE_BUCKET || DEFAULT_STORAGE_BUCKET;
+  return adminStorage().bucket(bucketName);
 }
 
 let cachedFirestore = null;
@@ -113,36 +163,21 @@ let cachedFirestore = null;
 export function adminDb() {
   if (cachedFirestore) return cachedFirestore;
 
-  const audience = process.env.GCP_WIF_AUDIENCE;
-  if (audience) {
+  const authClient = buildWifAuthClient();
+  if (authClient) {
     // firebase-admin v12's getFirestore() rejects any credential that is not
     // ServiceAccountCredential or ApplicationDefaultCredential (see firestore-internal.js).
     // Bypass that check by constructing @google-cloud/firestore directly with the
     // ExternalAccountClient — exactly what firebase-admin does internally, minus the gate.
-    const saEmail = process.env.FIREBASE_SA_EMAIL || DEFAULT_SA_EMAIL;
-    const authClient = ExternalAccountClient.fromJSON({
-      type: 'external_account',
-      audience,
-      subject_token_type: 'urn:ietf:params:oauth:token-type:jwt',
-      token_url: 'https://sts.googleapis.com/v1/token',
-      service_account_impersonation_url:
-        `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${saEmail}:generateAccessToken`,
-      scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-      subject_token_supplier: {
-        getSubjectToken: async () => getVercelOidcToken(),
-      },
+    // Use Firestore's REST transport (preferRest) to bypass gRPC/google-gax entirely —
+    // the REST client just calls auth.getRequestHeaders() per request, which
+    // ExternalAccountClient implements correctly.
+    cachedFirestore = new Firestore({
+      projectId: process.env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID,
+      auth: authClient,
+      preferRest: true,
     });
-    if (authClient) {
-      // Use Firestore's REST transport (preferRest) to bypass gRPC/google-gax entirely —
-      // the REST client just calls auth.getRequestHeaders() per request, which
-      // ExternalAccountClient implements correctly.
-      cachedFirestore = new Firestore({
-        projectId: process.env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID,
-        auth: authClient,
-        preferRest: true,
-      });
-      return cachedFirestore;
-    }
+    return cachedFirestore;
   }
 
   cachedFirestore = getFirestore(adminApp());
