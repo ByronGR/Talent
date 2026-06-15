@@ -2522,6 +2522,33 @@ function workEntryHtml(index, entry = {}) {
     </div>`;
 }
 
+const LANGUAGE_LEVELS = ["", "A1", "A2", "B1", "B2", "C1", "C2", "Native"];
+
+function langEntryHtml(index, entry = {}) {
+  const i = index;
+  const data = typeof entry === "string" ? { name: entry, level: "" } : entry;
+  return `
+    <div class="pf-sub-card lang-entry" data-lang-index="${i}">
+      <div class="pf-sub-card-body">
+        <div class="pf-field-row">
+          <label class="pf-field">
+            ${pfLabel("Language")}
+            <input type="text" class="pf-input lang-field" data-field="name" value="${escapeAttr(data.name || "")}" placeholder="e.g. Spanish, French…" />
+          </label>
+          <label class="pf-field">
+            ${pfLabel("Level")}
+            <select class="pf-input lang-field" data-field="level">
+              ${LANGUAGE_LEVELS.map((level) => `<option value="${level}" ${(data.level || "") === level ? "selected" : ""}>${level || "Select level"}</option>`).join("")}
+            </select>
+          </label>
+        </div>
+      </div>
+      <button type="button" class="pf-remove-btn remove-lang-entry" data-remove="${i}" aria-label="Remove">
+        ${icon("x")}
+      </button>
+    </div>`;
+}
+
 function certEntryHtml(index, entry = {}) {
   const i = index;
   return `
@@ -2677,20 +2704,22 @@ function renderProfileForm(mode = "profile") {
           </div>
 
           <!-- ── English & languages ── -->
-          <div class="pf-card">
+          <div class="pf-card" id="langCard">
             ${pfCardHead("languages", "English & languages")}
-            <div class="pf-field-row">
-              <label class="pf-field">
-                ${pfLabel("English level")}
-                <select class="pf-input" name="english">
-                  ${["", "B1", "B2", "C1", "C2", "Native"].map((level) => `<option value="${level}" ${state.candidate?.english === level ? "selected" : ""}>${level || "Select level"}</option>`).join("")}
-                </select>
-              </label>
-              <label class="pf-field">
-                ${pfLabel("Other languages", true)}
-                <input class="pf-input" name="languages" value="${escapeAttr((state.candidate?.languages || []).join(", "))}" placeholder="Spanish, French…" />
-              </label>
+            <label class="pf-field" style="max-width:280px; margin-bottom:14px;">
+              ${pfLabel("English level")}
+              <select class="pf-input" name="english">
+                ${["", "B1", "B2", "C1", "C2", "Native"].map((level) => `<option value="${level}" ${state.candidate?.english === level ? "selected" : ""}>${level || "Select level"}</option>`).join("")}
+              </select>
+            </label>
+            ${pfLabel("Other languages", true)}
+            <p class="pf-hint">Add any other languages you speak and your level in each.</p>
+            <div id="langEntries" class="pf-entries">
+              ${(state.candidate?.languages || []).map((l, i) => langEntryHtml(i, l)).join("")}
             </div>
+            <button type="button" id="addLangEntry" class="pf-add-btn">
+              ${icon("plus")} Add language
+            </button>
           </div>
 
           <!-- ── Contact ── -->
@@ -3017,6 +3046,7 @@ function bindDashboardEvents() {
   bindCvAutofill();
   bindWorkHistoryEditor();
   bindCertEditor();
+  bindLangEditor();
   bindProfileTabs();
   document.querySelectorAll("[data-apply]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -3216,7 +3246,7 @@ function bindDashboardEvents() {
       phone: form.get("whatsapp"),
       skills: [...new Set(form.getAll("skills").map(canonicalSkillName).filter(Boolean))],
       otherSkills: [],
-      languages: (form.get("languages") || "").split(",").map((l) => l.trim()).filter(Boolean),
+      languages: collectLanguages(),
       summary: form.get("summary"),
       email: state.candidate?.email || state.user?.email || "",
       availability: state.candidate?.availability || "open",
@@ -3385,6 +3415,31 @@ function collectWorkHistory() {
     const f = (field) => row.querySelector(`[data-field="${field}"]`)?.value?.trim() || "";
     return { title: f("title"), company: f("company"), from: f("from"), to: f("to") };
   }).filter((w) => w.title || w.company);
+}
+
+function bindLangEditor() {
+  const container = document.querySelector("#langCard");
+  if (!container) return;
+  let nextIndex = container.querySelectorAll(".lang-entry").length;
+
+  container.addEventListener("click", (e) => {
+    const removeBtn = e.target.closest(".remove-lang-entry");
+    if (removeBtn) { removeBtn.closest(".lang-entry")?.remove(); return; }
+    if (e.target.closest("#addLangEntry")) {
+      const entries = document.querySelector("#langEntries");
+      if (!entries) return;
+      const div = document.createElement("div");
+      div.innerHTML = langEntryHtml(nextIndex++, {});
+      entries.appendChild(div.firstElementChild);
+    }
+  });
+}
+
+function collectLanguages() {
+  return [...document.querySelectorAll(".lang-entry")].map((row) => {
+    const f = (field) => row.querySelector(`[data-field="${field}"]`)?.value?.trim() || "";
+    return { name: f("name"), level: f("level") };
+  }).filter((l) => l.name);
 }
 
 function bindCertEditor() {
@@ -3585,9 +3640,15 @@ function _applyParsedToForm(parsed, overwrite) {
   }
 
   if (parsed.languages?.length) {
-    const langInput = document.querySelector('input[name="languages"]');
-    if (langInput && (overwrite || !langInput.value?.trim())) {
-      langInput.value = parsed.languages.join(", ");
+    const entries = document.querySelector("#langEntries");
+    if (entries) {
+      if (overwrite) entries.innerHTML = "";
+      let idx = entries.querySelectorAll(".lang-entry").length;
+      parsed.languages.forEach((l) => {
+        const div = document.createElement("div");
+        div.innerHTML = langEntryHtml(idx++, l);
+        entries.appendChild(div.firstElementChild);
+      });
     }
   }
 
