@@ -202,6 +202,8 @@ const pipelineStages = [
   { key: "hired", label: "Hired", help: "Offer accepted and onboarding is ready to begin." }
 ];
 
+const CANDIDATE_STAGES = ["Applied", "Assessment", "Interview", "Final round", "Offer"];
+
 let state = {
   user: null,
   candidate: null,
@@ -884,8 +886,8 @@ function profileChecklist() {
 function renderDashboard() {
   const unreadNotifications = (state.notifications || []).filter((item) => !item.read).length;
   const avail = state.candidate?.availability || "open";
-  const availDotColors = { open: "#16A085", interviewing: "#EAB308", paused: "#9E9E9E" };
-  const dotColor = availDotColors[avail] || "#16A085";
+  const availDotColors = { open: "#10A07C", interviewing: "#EAB308", paused: "#9AA0A6" };
+  const dotColor = availDotColors[avail] || "#10A07C";
   const name = state.candidate?.name || state.user?.displayName || "Talent member";
   const headline = state.candidate?.headline || state.candidate?.targetRole || "Nearwork candidate";
 
@@ -1136,12 +1138,11 @@ function renderOverview() {
     </div>`;
 
   const appRow = (app, isLast) => {
-    const stages   = ["Applied", "Assessment", "Interview", "Final round", "Offer"];
     const rawStage = String(app.stage || app.status || "applied").toLowerCase();
     const stageIdx = rawStage.includes("offer") ? 4 : rawStage.includes("final") ? 3 : rawStage.includes("interview") ? 2 : rawStage.includes("assessment") ? 1 : 0;
     const company  = app.clientName || app.company || "Nearwork client";
     const initials = company.split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase();
-    const companyColors = ["#16A085", "#AF7AC5", "#E74C7C", "#3B82F6", "#EAB308"];
+    const companyColors = ["#10A07C", "#EC4E7E", "#3B82F6", "#F4A52E", "#8B5CF6"];
     const bg = companyColors[company.length % companyColors.length];
     return `
       <div class="nw-app-row${isLast ? " last" : ""}">
@@ -1149,7 +1150,7 @@ function renderOverview() {
         <div class="nw-app-info">
           <div class="nw-app-title">${escapeHtml(app.jobTitle || app.title || "Application")} <span class="nw-app-company">· ${escapeHtml(company)}</span></div>
           <div class="nw-app-stages">
-            ${stages.map((s, i) => `<div class="nw-stage-pip${i <= stageIdx ? " done" : ""}"></div>`).join("")}
+            ${CANDIDATE_STAGES.map((s, i) => `<div class="nw-stage-pip${i <= stageIdx ? " done" : ""}"></div>`).join("")}
             <span class="nw-app-stage-label">${app.stage || app.status || "Applied"}</span>
           </div>
         </div>
@@ -1165,7 +1166,7 @@ function renderOverview() {
     const role   = normalizeRole(job);
     const matched = matchingSkillsForJob(role);
     const score  = role.match || (matched.length >= 3 ? Math.min(97, 70 + matched.length * 4) : null);
-    const companyColors = ["#16A085", "#AF7AC5", "#E74C7C", "#3B82F6"];
+    const companyColors = ["#10A07C", "#EC4E7E", "#3B82F6", "#F4A52E"];
     const bg = companyColors[role.orgName.length % companyColors.length];
     const initials = role.orgName.split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase();
     const openingUrl = `https://jobs.nearwork.co/apply?code=${encodeURIComponent(role.code)}`;
@@ -1201,8 +1202,8 @@ function renderOverview() {
     <div class="nw-readiness-card">
       <div class="nw-readiness-donut">
         <svg viewBox="0 0 120 120" style="width:100%;height:100%;transform:rotate(-90deg);">
-          <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="8"/>
-          <circle cx="60" cy="60" r="52" fill="none" stroke="#16A085" stroke-width="8"
+          <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="8"/>
+          <circle cx="60" cy="60" r="52" fill="none" stroke="#FFFFFF" stroke-width="8"
             stroke-dasharray="${circ.toFixed(1)}" stroke-dashoffset="${offset.toFixed(1)}"
             stroke-linecap="round"/>
         </svg>
@@ -1231,10 +1232,10 @@ function renderOverview() {
 
     <!-- Stat tiles -->
     <div class="nw-stat-grid">
-      ${statTile("Open matches",  state.jobs.length,               state.jobs.length ? `${state.jobs.length} role${state.jobs.length > 1 ? "s" : ""} waiting`    : "Complete profile to unlock", "#16A085", "sparkles")}
-      ${statTile("Applications",  apps.length,                     apps.length ? `${actionsNeeded || "0"} need your input`                                        : "Not applied yet",             "#AF7AC5", "send")}
-      ${statTile("Interviews",    apps.filter(a => String(a.stage || a.status || "").toLowerCase().includes("interview")).length, "Scheduled",                               "Not yet scheduled",            "#E74C7C", "calendar-clock")}
-      ${statTile("CVs saved",     (state.candidate?.cvLibrary || []).length, "In your library",                                                                   "Upload your first CV",         "#555555", "files")}
+      ${statTile("Open matches",  state.jobs.length,               state.jobs.length ? `${state.jobs.length} role${state.jobs.length > 1 ? "s" : ""} waiting`    : "Complete profile to unlock", "#10A07C", "sparkles")}
+      ${statTile("Applications",  apps.length,                     apps.length ? `${actionsNeeded || "0"} need your input`                                        : "Not applied yet",             "#EC4E7E", "send")}
+      ${statTile("Interviews",    apps.filter(a => String(a.stage || a.status || "").toLowerCase().includes("interview")).length, "Scheduled",                               "Not yet scheduled",            "#F4A52E", "calendar-clock")}
+      ${statTile("CVs saved",     (state.candidate?.cvLibrary || []).length, "In your library",                                                                   "Upload your first CV",         "#3B82F6", "files")}
     </div>
 
     <!-- Pipeline + side rail -->
@@ -1857,31 +1858,41 @@ async function _onbFinish() {
 }
 
 function renderMatches() {
-  const preferredRole = state.candidate?.targetRole || (!isPlaceholderRole(state.candidate?.headline) ? state.candidate?.headline : "");
   const skills = candidateSkills();
   const filteredJobs = state.jobs.map(normalizeRole).filter((job) => matchingSkillsForJob(job, skills).length >= 3);
   const canFilter = skills.length >= 5;
   const visibleJobs = state.matchesFiltered && canFilter ? filteredJobs : state.jobs.map(normalizeRole);
   const filteredEmpty = state.matchesFiltered && !filteredJobs.length;
   return `
-    <section class="section-block">
-      <div class="section-heading">
-        <div><p class="eyebrow">Openings</p><h2>${state.matchesFiltered ? "Best fit from your profile" : "All current openings"}</h2></div>
-        <button id="filterMatches" class="secondary-action" type="button">${icon(state.matchesFiltered ? "list" : "filter")} ${state.matchesFiltered ? "Show all openings" : "Filter by my role & skills"}</button>
-      </div>
-      <div class="match-note"><strong>${visibleJobs.length}</strong> of <strong>${state.jobs.length}</strong> openings showing. Matches require <strong>3+ shared skills</strong>. Role: <strong>${preferredRole || "not set"}</strong>. Skills: <strong>${skills.join(", ") || "not set"}</strong>.</div>
-      <div class="job-list">${filteredEmpty ? emptyState("No filtered matches yet", "Add a target role and skills in Profile to improve matching.") : visibleJobs.map((job) => jobCard(job)).join("")}</div>
-    </section>
+    <div class="nw-page-head">
+      <div class="nw-page-overline">My search</div>
+      <h1 class="nw-page-title">Matches</h1>
+      <p class="nw-page-lede">Roles picked for you from your skills, target role, and salary.</p>
+    </div>
+    <div class="nw-filterbar">
+      <button id="filterMatches" class="nw-chip${state.matchesFiltered ? " active" : ""}" type="button">${icon(state.matchesFiltered ? "list" : "filter")} ${state.matchesFiltered ? "Show all openings" : "Filter by my role & skills"}</button>
+      <div class="nw-filter-count">${visibleJobs.length} of ${state.jobs.length} open roles</div>
+    </div>
+    <div class="nw-match-grid nw-match-grid--wide">${filteredEmpty ? emptyState("No filtered matches yet", "Add a target role and skills in Profile to improve matching.") : visibleJobs.map((job) => jobCard(job)).join("")}</div>
   `;
 }
 
 function renderApplications() {
+  const apps = state.applications || [];
   const hasPipeline = candidateHasPipeline();
   return `
-    <section class="section-block">
-      <div class="section-heading"><div><p class="eyebrow">Pipeline</p><h2>Your applications</h2></div></div>
-      ${hasPipeline ? pipelineView(currentStage()) : noPipelineView()}
-      <div class="timeline page-gap">${state.applications.length ? state.applications.map(applicationCard).join("") : emptyState("No applications yet", "Apply to a role and your process will show here.")}</div>
+    <div class="nw-page-head">
+      <div class="nw-page-overline">My journey</div>
+      <h1 class="nw-page-title">Applications</h1>
+      <p class="nw-page-lede">Every role you've applied to, and exactly where it stands.</p>
+    </div>
+    ${hasPipeline ? `
+      <section class="nw-panel nw-pipeline-panel">
+        <div class="nw-panel-head"><div><div class="nw-panel-overline">Status</div><div class="nw-panel-title">Where you are in the process</div></div></div>
+        ${pipelineView(currentStage())}
+      </section>` : ""}
+    <section class="nw-panel nw-applist">
+      ${apps.length ? apps.map((app, i) => applicationCard(app, i === apps.length - 1)).join("") : noPipelineView()}
     </section>
   `;
 }
@@ -1907,9 +1918,14 @@ function renderAssessment() {
   // Error: direct link but no matching assessment
   if (directId && !activeAssessment) {
     return `
+      <div class="nw-page-head">
+        <div class="nw-page-overline">My journey</div>
+        <h1 class="nw-page-title">Assessment</h1>
+        <p class="nw-page-lede">A short role assessment helps your recruiter advocate for you with real signal.</p>
+      </div>
       <div class="nw-assess-wrap nw-assess-state-page">
         <div class="nw-assess-state-card">
-          <div class="nw-assess-state-icon" style="background:#FEF0F5;color:#CC3666">${icon("link-2-off")}</div>
+          <div class="nw-assess-state-icon" style="background:var(--pp-pink-soft);color:#CC3666">${icon("link-2-off")}</div>
           <strong>This link isn't available</strong>
           <p>Make sure you're logged into the same account that received the assessment email. If the problem persists, reach out to your Nearwork recruiter.</p>
           <button class="primary-action fit" data-page="recruiter" type="button">${icon("message-circle")} Contact support</button>
@@ -1921,6 +1937,11 @@ function renderAssessment() {
   // Not assigned yet
   if (!activeAssessment) {
     return `
+      <div class="nw-page-head">
+        <div class="nw-page-overline">My journey</div>
+        <h1 class="nw-page-title">Assessment</h1>
+        <p class="nw-page-lede">A short role assessment helps your recruiter advocate for you with real signal.</p>
+      </div>
       <div class="nw-assess-wrap nw-assess-state-page">
         <div class="nw-assess-state-card">
           <div class="nw-assess-state-icon">${icon("inbox")}</div>
@@ -2063,9 +2084,9 @@ function renderAssessmentQuestions(assessment, started, displayIndex = null) {
         <p class="nw-assess-welcome__desc">This assessment has two parts: a role-knowledge check and a behavioral profile.</p>
         <div class="nw-assess-parts">
           <div class="nw-assess-part">
-            <div class="nw-assess-part__blob" style="background:#E8F8F5"></div>
-            <div class="nw-assess-part__icon" style="background:#E8F8F5;color:#16A085">${icon("code-2")}</div>
-            <span class="nw-assess-part__tag" style="color:#16A085">Part 1</span>
+            <div class="nw-assess-part__blob" style="background:#E4F6EF"></div>
+            <div class="nw-assess-part__icon" style="background:#E4F6EF;color:#10A07C">${icon("code-2")}</div>
+            <span class="nw-assess-part__tag" style="color:#10A07C">Part 1</span>
             <strong class="nw-assess-part__title">Technical Assessment</strong>
             <span class="nw-assess-part__sub">${stage1Q} questions &middot; ~${stage1Min} min</span>
             <p class="nw-assess-part__desc">Single-choice role scenarios. We're looking at how you think, not whether you remember definitions.</p>
@@ -2171,13 +2192,13 @@ function renderAssessmentTechIntro(assessment) {
       ${renderAssessmentChromeSimple(assessment)}
       <div class="nw-assess-body">
         <div class="nw-assess-welcome" style="max-width:860px">
-          <div style="display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:#E8F8F5;border:1px solid rgba(22,160,133,0.25);margin-bottom:4px">
-            <span style="width:6px;height:6px;border-radius:50%;background:#16A085;display:inline-block"></span>
-            <span style="font-size:11.5px;font-weight:600;color:#0E6B58;text-transform:uppercase;letter-spacing:0.05em">Part 1 of 2 &middot; Starting now</span>
+          <div style="display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:#E4F6EF;border:1px solid rgba(16,160,124,0.25);margin-bottom:4px">
+            <span style="width:6px;height:6px;border-radius:50%;background:#10A07C;display:inline-block"></span>
+            <span style="font-size:11.5px;font-weight:600;color:#0A7C5E;text-transform:uppercase;letter-spacing:0.05em">Part 1 of 2 &middot; Starting now</span>
           </div>
           <h2 class="nw-assess-welcome__title" style="font-size:2.2rem">Role knowledge check.</h2>
           <p class="nw-assess-welcome__desc">The next <strong>${stage1Q} questions</strong> are about the day-to-day of the ${role} role — scenarios, decisions, and judgement calls. We're looking at how you think, not whether you remember definitions.</p>
-          <p style="font-size:0.88rem;color:#9E9E9E;margin:0">You have <strong style="color:#555">${stage1Min} minutes</strong> total. Your progress saves automatically after every question. DISC follows when you finish.</p>
+          <p style="font-size:0.88rem;color:#9AA0A6;margin:0">You have <strong style="color:#5C6066">${stage1Min} minutes</strong> total. Your progress saves automatically after every question. DISC follows when you finish.</p>
           <div class="nw-assess-welcome__cta" style="margin-top:8px">
             <button class="primary-action" id="startAssessment" type="button">${icon("play")} Start Part 1</button>
             <button class="ghost-action" id="backToWelcome" type="button">${icon("arrow-left")} Back</button>
@@ -2198,11 +2219,11 @@ function renderAssessmentDiscIntro(assessment) {
     <div class="nw-assess-wrap">
       ${renderAssessmentChromeSimple(assessment)}
       <div class="nw-assess-body">
-        <div style="background:#E8F8F5;border-bottom:1px solid rgba(22,160,133,0.15);padding:13px 20px;display:flex;align-items:center;gap:12px;margin-bottom:24px;border-radius:10px">
-          <div style="width:26px;height:26px;border-radius:50%;background:#16A085;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">${icon("check")}</div>
+        <div style="background:#E4F6EF;border-bottom:1px solid rgba(16,160,124,0.15);padding:13px 20px;display:flex;align-items:center;gap:12px;margin-bottom:24px;border-radius:10px">
+          <div style="width:26px;height:26px;border-radius:50%;background:#10A07C;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">${icon("check")}</div>
           <div style="flex:1">
-            <div style="font-size:13px;font-weight:600;color:#0E6B58">Part 1 complete — nice work.</div>
-            <div style="font-size:12px;color:#12866E;margin-top:1px">${stage1Q}/${stage1Q} answered &middot; submitted to ${recruiter} for review</div>
+            <div style="font-size:13px;font-weight:600;color:#0A7C5E">Part 1 complete — nice work.</div>
+            <div style="font-size:12px;color:#0A7C5E;margin-top:1px">${stage1Q}/${stage1Q} answered &middot; submitted to ${recruiter} for review</div>
           </div>
           <span class="nw-assess-chip nw-assess-chip--teal">${icon("trophy")} Part 1 done</span>
         </div>
@@ -2292,8 +2313,8 @@ function renderAssessmentResult(assessment) {
 function renderAssessmentHistory(assessments, activeId) {
   if (!assessments.length) return "";
   return `
-    <section class="section-block page-gap">
-      <div class="section-heading"><div><p class="eyebrow">Assessment center</p><h2>Your assessment history</h2></div></div>
+    <section class="nw-panel" style="margin-top:18px;padding-bottom:18px;">
+      <div class="nw-panel-head"><div><div class="nw-panel-overline">Assessment center</div><div class="nw-panel-title">Your assessment history</div></div></div>
       <div class="assessment-history-list">
         ${assessments.map((assessment) => `
           <article class="assessment-history-row ${assessment.id === activeId ? "active" : ""}">
@@ -2380,8 +2401,12 @@ async function notifyAssessmentCompletion(assessment, result) {
 function renderCvs() {
   const cvs = state.candidate?.cvLibrary || [];
   return `
-    <section class="section-block">
-      <div class="section-heading"><div><p class="eyebrow">CV picker</p><h2>Store multiple resumes</h2></div></div>
+    <div class="nw-page-head">
+      <div class="nw-page-overline">My search</div>
+      <h1 class="nw-page-title">CV picker</h1>
+      <p class="nw-page-lede">Save multiple resumes and pick the best one for each opening.</p>
+    </div>
+    <section class="nw-panel" style="margin-top:18px;padding-bottom:18px;">
       <form id="cvForm" class="upload-box">
         ${icon("upload-cloud")}<strong>Upload a CV for this role</strong><p>Save multiple versions and pick the best one for each opening.</p>
         <input name="cv" type="file" accept=".pdf,.doc,.docx" required />
@@ -2397,8 +2422,12 @@ function renderCvs() {
 
 function renderTips() {
   return `
-    <section class="tips-hero"><div><p class="eyebrow">Candidate guide</p><h2>Practical prep for US SaaS interviews.</h2><p>Short, useful guidance candidates can read before recruiter screens, assessments, and client interviews.</p></div></section>
-    <section class="tips-grid rich">
+    <div class="nw-page-head">
+      <div class="nw-page-overline">Support</div>
+      <h1 class="nw-page-title">Tips</h1>
+      <p class="nw-page-lede">Practical prep for US SaaS interviews — short, useful guidance before recruiter screens, assessments, and client interviews.</p>
+    </div>
+    <section class="tips-grid rich" style="margin-top:18px;">
       ${tips.map((tip, index) => `
         <article class="tip-card">
           <div class="tip-number">${String(index + 1).padStart(2, "0")}</div>
@@ -2417,10 +2446,22 @@ function renderRecruiter() {
   const recruiter = state.candidate?.recruiter || {};
   const bookingUrl = recruiter.bookingUrl || state.candidate?.recruiterBookingUrl || "mailto:support@nearwork.co?subject=Nearwork%20candidate%20question";
   return `
-    <section class="content-grid">
-      <div class="section-block"><div class="section-heading"><div><p class="eyebrow">Recruiter</p><h2>Your Nearwork contact</h2></div></div>${recruiterCard(true)}</div>
-      <div class="section-block compact"><div class="section-heading"><div><p class="eyebrow">Booking</p><h2>Schedule soon</h2></div></div><p class="muted">Ask the Nearwork recruiting team for the earliest available slot. Candidate booking links can be attached to this profile later.</p><a class="primary-action fit" href="${bookingUrl}" target="_blank" rel="noreferrer">${icon("calendar-plus")} Book recruiter call</a></div>
-    </section>
+    <div class="nw-page-head">
+      <div class="nw-page-overline">Support</div>
+      <h1 class="nw-page-title">Recruiter</h1>
+      <p class="nw-page-lede">Your Nearwork talent partner — reach out anytime about assessments, interviews, feedback, or CV selection.</p>
+    </div>
+    <div class="nw-split" style="margin-top:18px;">
+      <section class="nw-panel" style="padding-bottom:18px;">
+        <div class="nw-panel-head"><div><div class="nw-panel-overline">Recruiter</div><div class="nw-panel-title">Your Nearwork contact</div></div></div>
+        ${recruiterCard(true)}
+      </section>
+      <section class="nw-panel" style="padding-bottom:18px;">
+        <div class="nw-panel-head"><div><div class="nw-panel-overline">Booking</div><div class="nw-panel-title">Schedule soon</div></div></div>
+        <p class="muted">Ask the Nearwork recruiting team for the earliest available slot. Candidate booking links can be attached to this profile later.</p>
+        <a class="primary-action fit" href="${bookingUrl}" target="_blank" rel="noreferrer">${icon("calendar-plus")} Book recruiter call</a>
+      </section>
+    </div>
   `;
 }
 
@@ -2532,8 +2573,8 @@ function renderProfileForm(mode = "profile") {
         </div>
         <div class="pf-completion-badge">
           <svg viewBox="0 0 40 40" class="pf-completion-ring">
-            <circle cx="20" cy="20" r="16" fill="none" stroke="#EBEBEB" stroke-width="3"/>
-            <circle cx="20" cy="20" r="16" fill="none" stroke="#16A085" stroke-width="3"
+            <circle cx="20" cy="20" r="16" fill="none" stroke="#EBEDF0" stroke-width="3"/>
+            <circle cx="20" cy="20" r="16" fill="none" stroke="#10A07C" stroke-width="3"
               stroke-dasharray="${(2*Math.PI*16).toFixed(1)}"
               stroke-dashoffset="${(2*Math.PI*16*(1-completion/100)).toFixed(1)}"
               stroke-linecap="round" transform="rotate(-90 20 20)"/>
@@ -2747,13 +2788,13 @@ function pipelineView(activeStage) {
 
 function noPipelineView() {
   return `
-    <div class="empty-state">
+    <div class="nw-empty">
       ${icon("briefcase-business")}
       <strong>No active pipeline yet</strong>
-      <p>Browse current openings and apply when you find a role that fits. Nearwork will show a pipeline here after an application moves forward.</p>
-      <div class="empty-actions">
-        <button class="primary-action fit" type="button" data-page="matches">${icon("sparkles")} View matches</button>
-        <a class="secondary-action" href="https://jobs.nearwork.co" target="_blank" rel="noreferrer">${icon("external-link")} Open jobs</a>
+      <p>Browse current openings and apply when you find a role that fits. Nearwork will show your applications here once you apply.</p>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="nw-btn-primary" type="button" data-page="matches">${icon("sparkles")} View matches</button>
+        <a class="nw-btn-secondary" href="https://jobs.nearwork.co" target="_blank" rel="noreferrer">${icon("external-link")} Open jobs</a>
       </div>
     </div>
   `;
@@ -2774,30 +2815,54 @@ function jobCard(job) {
   const appliedFromServer = new Set(state.applications.map((item) => item.jobId || item.openingCode)).has(role.code);
   const applied = appliedFromServer || getLocalAppliedSet().has(role.code);
   const matchedSkills = matchingSkillsForJob(role);
+  const score = role.match || (matchedSkills.length >= 3 ? Math.min(97, 70 + matchedSkills.length * 4) : null);
+  const companyColors = ["#10A07C", "#EC4E7E", "#3B82F6", "#F4A52E"];
+  const bg = companyColors[role.orgName.length % companyColors.length];
+  const initials = role.orgName.split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase();
   const openingUrl = `https://jobs.nearwork.co/apply?code=${encodeURIComponent(role.code)}`;
+  const chips = (matchedSkills.length ? matchedSkills : role.skills).slice(0, 3);
   return `
-    <article class="job-card">
-      <div>
-        ${matchedSkills.length >= 3 ? `<div class="match-pill">${matchedSkills.length} skill match</div>` : role.match ? `<div class="match-pill">${role.match}% match</div>` : ''}
-        <h3><a href="${openingUrl}" target="_blank" rel="noreferrer" style="color:inherit;text-decoration:none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${role.title}</a></h3>
-        <p>${role.location}</p>
+    <div class="nw-match-card">
+      <div class="nw-match-card-top">
+        <div class="nw-match-avatar" style="background:${bg};">${initials}</div>
+        ${score ? `<div class="nw-match-score">${score}% match</div>` : ""}
       </div>
-      <p class="job-description">${role.description}</p>
-      <div class="skill-row">${role.skills.slice(0, 4).map((skill) => `<span>${skill}</span>`).join("")}</div>
-      ${matchedSkills.length >= 3 ? `<p class="field-hint">Matched skills: ${matchedSkills.slice(0, 5).map(escapeHtml).join(", ")}</p>` : ""}
-      <div class="job-footer">
-        <strong>${role.compensation}</strong>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <a href="${openingUrl}" target="_blank" rel="noreferrer" class="secondary-action" style="text-decoration:none;font-size:12px;opacity:0.75;">View opening ↗</a>
-          <button class="secondary-action" type="button" data-apply="${role.code}" ${applied ? "disabled" : ""}>${applied ? "Applied ✓" : "Apply"}</button>
-        </div>
+      <div class="nw-match-role">${escapeHtml(role.title)}</div>
+      <div class="nw-match-company">${escapeHtml(role.orgName)} · ${escapeHtml(role.location)}</div>
+      <div class="nw-match-chips">${chips.map(escapeHtml).map((s) => `<span class="nw-match-chip">${s}</span>`).join("")}</div>
+      <div class="nw-match-footer">
+        <span class="nw-match-salary">${escapeHtml(role.compensation)}</span>
+        <a href="${openingUrl}" target="_blank" rel="noreferrer" class="nw-match-view">View opening ${icon("arrow-up-right")}</a>
       </div>
-    </article>
+      <button class="nw-match-applybtn${applied ? " applied" : ""}" type="button" data-apply="${role.code}" ${applied ? "disabled" : ""}>${applied ? `${icon("check")} Applied` : `Apply now ${icon("arrow-right")}`}</button>
+    </div>
   `;
 }
 
-function applicationCard(application) {
-  return `<article class="timeline-item"><span>${icon("circle-dot")}</span><div><strong>${application.jobTitle || application.title || "Application"}</strong><p>${application.clientName || application.company || "Nearwork"} · ${application.status || "submitted"}</p><small>${formatDate(application.updatedAt || application.createdAt)}</small></div></article>`;
+function applicationCard(application, isLast) {
+  const rawStage = String(application.stage || application.status || "applied").toLowerCase();
+  const stageIdx = rawStage.includes("offer") ? 4 : rawStage.includes("final") ? 3 : rawStage.includes("interview") ? 2 : rawStage.includes("assessment") ? 1 : 0;
+  const company  = application.clientName || application.company || "Nearwork client";
+  const initials = company.split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase();
+  const companyColors = ["#10A07C", "#EC4E7E", "#3B82F6", "#F4A52E", "#8B5CF6"];
+  const bg = companyColors[company.length % companyColors.length];
+  const needsAction = ["action-needed", "interview-scheduled", "assessment-sent"].includes(String(application.status || "").toLowerCase());
+  return `
+    <div class="nw-app-row${isLast ? " last" : ""}">
+      <div class="nw-app-avatar" style="background:${bg};">${initials}</div>
+      <div class="nw-app-info">
+        <div class="nw-app-title">${escapeHtml(application.jobTitle || application.title || "Application")} <span class="nw-app-company">· ${escapeHtml(company)}</span></div>
+        <div class="nw-app-stages">
+          ${CANDIDATE_STAGES.map((s, i) => `<div class="nw-stage-pip${i <= stageIdx ? " done" : ""}"></div>`).join("")}
+          <span class="nw-app-stage-label">${application.stage || application.status || "Applied"}</span>
+        </div>
+      </div>
+      <div class="nw-app-meta">
+        <span class="nw-app-status${needsAction ? " action" : ""}">${application.status || "In review"}</span>
+        <div class="nw-app-date">${formatDate(application.updatedAt || application.createdAt)}</div>
+      </div>
+      ${icon("chevron-right")}
+    </div>`;
 }
 
 function infoCard(title, body) {
