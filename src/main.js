@@ -2883,6 +2883,16 @@ function renderProfileForm(mode = "profile") {
             </div>
           </div>
 
+          <!-- ── Communications ── -->
+          <div class="pf-card">
+            ${pfCardHead("mail", "Communications")}
+            <label class="pf-checkbox-row">
+              <input type="checkbox" name="marketingConsent" ${state.candidate?.marketingConsent === true ? "checked" : ""} />
+              <span>Send me job opportunities and updates from Nearwork by email</span>
+            </label>
+            <p class="pf-hint">You can turn this on or off at any time. It won't affect emails about your active applications.</p>
+          </div>
+
           ${mode === "onboarding" ? "" : `
           <!-- ── Danger zone ── -->
           <div class="pf-card pf-danger-card">
@@ -3434,6 +3444,7 @@ function bindDashboardEvents() {
     const department = form.get("department");
     const city = form.get("city");
     const salary = normalizeSalaryValue(form.get("salary"), form.get("salaryCurrency"));
+    const marketingConsent = form.get("marketingConsent") === "on";
     const data = {
       name: form.get("name"),
       targetRole: form.get("targetRole"),
@@ -3461,6 +3472,10 @@ function bindDashboardEvents() {
       summary: form.get("summary"),
       email: state.candidate?.email || state.user?.email || "",
       availability: state.candidate?.availability || "open",
+      marketingConsent,
+      marketingConsentAt: marketingConsent
+        ? (state.candidate?.marketingConsent === true ? (state.candidate?.marketingConsentAt || null) : new Date().toISOString())
+        : null,
       onboarded: true
     };
     if (!state.user) {
@@ -3494,8 +3509,6 @@ function bindDashboardEvents() {
         photoURL,
         // Preserve the existing CAND code so we never create a duplicate candidate doc
         candidateCode: state.candidate?.candidateCode,
-        // Forward stored marketing consent so HubSpot sync remains gated correctly
-        marketingConsent: state.candidate?.marketingConsent === true,
         ...(cv ? {
           activeCvId: cv.id,
           activeCvName: cv.name || cv.fileName,
