@@ -800,7 +800,7 @@ function renderLogin(mode = "login") {
         <div id="consentBlock" style="margin:2px 0 4px;">
           <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:#2d2d2d;line-height:1.5;margin-bottom:3px;">
             <input type="checkbox" name="privacyConsent" id="privacyConsent" style="width:16px!important;height:16px!important;min-height:16px!important;min-width:16px!important;padding:0!important;border:1px solid #aaa!important;border-radius:3px!important;background:#fff!important;flex-shrink:0;margin-top:3px;accent-color:#16a085;cursor:pointer;">
-            <span>I have read and agree to Nearwork's <a href="https://nearwork.co/privacy" target="_blank" rel="noopener" style="color:#16a085;text-decoration:underline;">Privacy Policy</a> and <a href="https://nearwork.co/terms" target="_blank" rel="noopener" style="color:#16a085;text-decoration:underline;">Terms of Service</a> *</span>
+            <span>I have read and agree to Nearwork's <a href="https://www.nearwork.co/privacy-policy" target="_blank" rel="noopener" style="color:#16a085;text-decoration:underline;">Privacy Policy</a>, <a href="https://www.nearwork.co/terms-of-service" target="_blank" rel="noopener" style="color:#16a085;text-decoration:underline;">Terms of Service</a> and <a href="https://www.nearwork.co/cookie-policy" target="_blank" rel="noopener" style="color:#16a085;text-decoration:underline;">Cookie Policy</a> *</span>
           </label>
           <p id="privacyConsentError" style="display:none;font-size:12px;color:#c0392b;margin:2px 0 6px 27px;">You must accept the Privacy Policy to continue</p>
           <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;margin-top:10px;font-size:13px;color:#555;line-height:1.5;">
@@ -1394,6 +1394,7 @@ function renderOverview() {
     </div>
 
     <!-- Readiness card -->
+    ${done >= total ? "" : `
     <div class="nw-readiness-card">
       <div class="nw-readiness-donut">
         <svg viewBox="0 0 120 120" style="width:100%;height:100%;transform:rotate(-90deg);">
@@ -1409,7 +1410,7 @@ function renderOverview() {
       </div>
       <div class="nw-readiness-body">
         <div class="nw-readiness-overline">Profile readiness</div>
-        <h2 class="nw-readiness-title">${done >= total ? "Your profile is complete — you're ready to match." : `${total - done} more step${total - done > 1 ? "s" : ""} and Nearwork can boost your matches.`}</h2>
+        <h2 class="nw-readiness-title">${total - done} more step${total - done > 1 ? "s" : ""} and Nearwork can boost your matches.</h2>
         <div class="nw-readiness-checklist">
           ${checklist.map(c => `
             <div class="nw-check-pill${c.done ? " done" : ""}">
@@ -1418,12 +1419,12 @@ function renderOverview() {
         </div>
         <div class="nw-readiness-actions">
           <button class="nw-finish-btn" type="button" data-page="profile">
-            ${done >= total ? "View profile" : "Finish profile"} ${icon("arrow-right")}
+            Finish profile ${icon("arrow-right")}
           </button>
           <span class="nw-readiness-count">${done} of ${total} complete</span>
         </div>
       </div>
-    </div>
+    </div>`}
 
     <!-- Stat tiles -->
     <div class="nw-stat-grid">
@@ -1808,8 +1809,17 @@ function _onbRenderLanguagesList() {
   const container = document.querySelector("#onbLanguagesList");
   if (!container) return;
   container.innerHTML = "";
+  if (_onbData.english) {
+    const englishRow = document.createElement("div");
+    englishRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:var(--gray-1);font-size:14px;color:var(--black);";
+    englishRow.innerHTML = `<span style="font-weight:600;">English</span><span style="color:var(--light);">${escapeHtml(_onbData.english)}</span>`;
+    container.appendChild(englishRow);
+  }
   if (!_onbData.languages.length) {
-    container.innerHTML = `<p style="font-size:12px;color:var(--light);margin:0 0 10px;">No languages added yet.</p>`;
+    const empty = document.createElement("p");
+    empty.style.cssText = "font-size:12px;color:var(--light);margin:0 0 10px;";
+    empty.textContent = "No other languages added yet.";
+    container.appendChild(empty);
   }
   _onbData.languages.forEach((lang, idx) => {
     const row = document.createElement("div");
