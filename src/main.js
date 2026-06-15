@@ -44,6 +44,10 @@ let _onbParsePromise = null; // in-flight Affinda request
 let _onbParsed       = null; // resolved Affinda result
 let _onbInitialized  = false; // guards against wiping wizard progress on background re-renders
 
+// ─── Unsaved profile changes guard ────────────────────────────────────────────
+let _profileFormDirty = false;
+let _pendingNavTarget  = null; // sidebar page key the candidate tried to navigate to while dirty
+
 const app = document.querySelector("#app");
 const SUPPORT_WHATSAPP = "+573135928691";
 const SUPPORT_WHATSAPP_URL = "https://wa.me/573135928691";
@@ -261,7 +265,8 @@ let state = {
   assessmentUiStep: null,  // null | "techIntro" | "discIntro"
   showDeleteAccountModal: false,
   deleteAccountStatus: null,  // null | "deleting" | "error"
-  deleteAccountError: ""
+  deleteAccountError: "",
+  showUnsavedChangesModal: false
 };
 
 let notificationUnsubscribe = null;
@@ -3013,6 +3018,19 @@ function renderProfileForm(mode = "profile") {
           </div>
         </div>
       </div>` : ""}
+
+      ${mode === "profile" && state.showUnsavedChangesModal ? `
+      <div class="nw-modal-overlay" id="unsavedChangesOverlay">
+        <div class="nw-modal">
+          <h3>Save your changes?</h3>
+          <p>You've made changes to your profile that haven't been saved yet. Do you want to save them before leaving this page?</p>
+          <div class="nw-modal-actions">
+            <button type="button" id="cancelUnsavedNav" class="nw-btn-secondary">Stay on this page</button>
+            <button type="button" id="discardUnsavedNav" class="nw-btn-secondary">Discard changes</button>
+            <button type="button" id="saveUnsavedNav" class="pf-save-btn">Save &amp; continue</button>
+          </div>
+        </div>
+      </div>` : ""}
     </div>
   `;
 }
@@ -3142,6 +3160,8 @@ function bindDashboardEvents() {
     if (notificationUnsubscribe) notificationUnsubscribe();
     notificationUnsubscribe = null;
     _onbInitialized = false;
+    _profileFormDirty = false;
+    _pendingNavTarget = null;
     window.history.pushState({ page: "overview" }, "", "/");
     setState({ user: null, candidate: null, applications: [], assessments: [], jobs: [], view: "login", activePage: "overview", message: "" });
   });
@@ -3168,6 +3188,8 @@ function bindDashboardEvents() {
       if (notificationUnsubscribe) notificationUnsubscribe();
       notificationUnsubscribe = null;
       _onbInitialized = false;
+      _profileFormDirty = false;
+      _pendingNavTarget = null;
       window.history.pushState({ page: "overview" }, "", "/");
       setState({
         user: null,
@@ -3189,10 +3211,38 @@ function bindDashboardEvents() {
   document.querySelectorAll("[data-page]").forEach((button) => {
     button.addEventListener("click", (e) => {
       const target = e.currentTarget.closest("[data-page]") || e.currentTarget;
-      setActivePage(target.dataset.page);
+      const targetPage = target.dataset.page;
+      if (state.activePage === "profile" && _profileFormDirty && targetPage !== "profile") {
+        _pendingNavTarget = targetPage;
+        setState({ showUnsavedChangesModal: true });
+        return;
+      }
+      setActivePage(targetPage);
     });
   });
-  document.querySelector("[data-dashboard-home]")?.addEventListener("click", () => setActivePage("overview"));
+  document.querySelector("[data-dashboard-home]")?.addEventListener("click", () => {
+    if (state.activePage === "profile" && _profileFormDirty) {
+      _pendingNavTarget = "overview";
+      setState({ showUnsavedChangesModal: true });
+      return;
+    }
+    setActivePage("overview");
+  });
+  document.querySelector("#cancelUnsavedNav")?.addEventListener("click", () => {
+    _pendingNavTarget = null;
+    setState({ showUnsavedChangesModal: false });
+  });
+  document.querySelector("#discardUnsavedNav")?.addEventListener("click", () => {
+    _profileFormDirty = false;
+    const target = _pendingNavTarget;
+    _pendingNavTarget = null;
+    setState({ showUnsavedChangesModal: false });
+    if (target) setActivePage(target);
+  });
+  document.querySelector("#saveUnsavedNav")?.addEventListener("click", () => {
+    setState({ showUnsavedChangesModal: false });
+    document.querySelector("#profileForm")?.requestSubmit();
+  });
   document.querySelector("#notificationBell")?.addEventListener("click", () => {
     setState({ notificationPanelOpen: !state.notificationPanelOpen, notificationSettingsOpen: false });
   });
@@ -3553,7 +3603,13 @@ function bindDashboardEvents() {
         window.history.pushState({ page: "overview" }, "", "/");
         setState({ candidate: { ...state.candidate, ...enrichedData }, activePage: "overview", message: "Profile complete. Welcome to Talent." });
       } else {
-        setState({ candidate: { ...state.candidate, ...enrichedData }, message: savedMessage });
+        _profileFormDirty = false;
+        setState({ candidate: { ...state.candidate, ...enrichedData }, message: savedMessage, showUnsavedChangesModal: false });
+        if (_pendingNavTarget) {
+          const target = _pendingNavTarget;
+          _pendingNavTarget = null;
+          setActivePage(target);
+        }
       }
     } catch (error) {
       setState({ message: friendlyAuthError(error) });
@@ -3619,6 +3675,11 @@ function bindProfileTabs() {
     const panel = event.target.closest(".pf-tab-panel");
     if (panel) activate(panel.dataset.tabPanel);
   }, true);
+
+  // Track unsaved edits so we can warn before the candidate navigates away.
+  const form = document.querySelector("#profileForm");
+  form?.addEventListener("input", () => { _profileFormDirty = true; });
+  form?.addEventListener("change", () => { _profileFormDirty = true; });
 }
 
 function bindWorkHistoryEditor() {
@@ -3631,6 +3692,7 @@ function bindWorkHistoryEditor() {
     const removeBtn = e.target.closest(".remove-work-entry");
     if (removeBtn) {
       removeBtn.closest(".work-entry")?.remove();
+      _profileFormDirty = true;
       return;
     }
     // Add entry
@@ -3640,6 +3702,7 @@ function bindWorkHistoryEditor() {
       const div = document.createElement("div");
       div.innerHTML = workEntryHtml(nextIndex++, {});
       entries.appendChild(div.firstElementChild);
+      _profileFormDirty = true;
     }
   });
 }
@@ -3658,13 +3721,14 @@ function bindLangEditor() {
 
   container.addEventListener("click", (e) => {
     const removeBtn = e.target.closest(".remove-lang-entry");
-    if (removeBtn) { removeBtn.closest(".lang-entry")?.remove(); return; }
+    if (removeBtn) { removeBtn.closest(".lang-entry")?.remove(); _profileFormDirty = true; return; }
     if (e.target.closest("#addLangEntry")) {
       const entries = document.querySelector("#langEntries");
       if (!entries) return;
       const div = document.createElement("div");
       div.innerHTML = langEntryHtml(nextIndex++, {});
       entries.appendChild(div.firstElementChild);
+      _profileFormDirty = true;
     }
   });
 }
@@ -3683,13 +3747,14 @@ function bindCertEditor() {
 
   container.addEventListener("click", (e) => {
     const removeBtn = e.target.closest(".remove-cert-entry");
-    if (removeBtn) { removeBtn.closest(".cert-entry")?.remove(); return; }
+    if (removeBtn) { removeBtn.closest(".cert-entry")?.remove(); _profileFormDirty = true; return; }
     if (e.target.closest("#addCertEntry")) {
       const entries = document.querySelector("#certEntries");
       if (!entries) return;
       const div = document.createElement("div");
       div.innerHTML = certEntryHtml(nextIndex++, {});
       entries.appendChild(div.firstElementChild);
+      _profileFormDirty = true;
     }
   });
 }
@@ -3967,6 +4032,7 @@ function bindSkillSearch() {
     renderSelected(next);
     input.value = "";
     renderSuggestions();
+    _profileFormDirty = true;
   };
 
   input?.addEventListener("input", renderSuggestions);
@@ -3990,6 +4056,7 @@ function bindSkillSearch() {
     const remove = normalizeSkillName(button.dataset.removeSkill);
     renderSelected(selected().filter((skill) => normalizeSkillName(skill) !== remove));
     renderSuggestions();
+    _profileFormDirty = true;
   });
 }
 
