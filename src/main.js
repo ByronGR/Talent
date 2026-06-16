@@ -918,7 +918,7 @@ function renderLogin(mode = "login") {
 
 function renderResetPassword() {
   const params = new URLSearchParams(window.location.search);
-  const oobCode = params.get("oobCode") || "";
+  const token = params.get("token") || "";
   const email = params.get("email") || "";
 
   renderShell(`
@@ -931,7 +931,7 @@ function renderResetPassword() {
         <h2>Set a new password.</h2>
         <p>${email ? `Resetting password for <strong>${escapeHtml(email)}</strong>. Choose a password you haven't used before.` : "Choose a new password you haven't used before."}</p>
       </div>
-      ${!oobCode ? `
+      ${!token ? `
         <div class="notice">${icon("triangle-alert")} This link is invalid or has already been used. Request a new one below.</div>
         <button class="primary-action" type="button" id="backToLogin">Back to sign in</button>
       ` : state.resetCodeStatus === "success" ? `
@@ -998,11 +998,16 @@ function renderResetPassword() {
     }
     setState({ resetCodeStatus: "resetting" });
     try {
-      await confirmPasswordReset(auth, oobCode, newPassword);
+      const response = await fetch('/api/confirm-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, newPassword }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Something went wrong. Please request a new link.');
       setState({ resetCodeStatus: "success" });
     } catch (error) {
-      let msg = "This link has expired or already been used. Please request a new one.";
-      if (error?.code === "auth/weak-password") msg = "Password must be at least 6 characters.";
+      const msg = error?.message || "This link has expired or already been used. Please request a new one.";
       setState({ resetCodeStatus: "error", resetCodeError: msg });
     }
   });

@@ -3,7 +3,6 @@ import {
   GoogleAuthProvider,
   getAdditionalUserInfo,
   getAuth,
-  confirmPasswordReset,
   onAuthStateChanged,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
@@ -750,7 +749,6 @@ async function parseCvWithAffinda(file) {
 export {
   applyToJob,
   auth,
-  confirmPasswordReset,
   createUserWithEmailAndPassword,
   deleteOwnAccount,
   findCandidateByEmail,
