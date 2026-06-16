@@ -1,3 +1,5 @@
+import { adminAuth } from './_lib/firebase-admin.js';
+
 function splitName(name = '') {
   const parts = String(name).trim().split(/\s+/).filter(Boolean);
   return {
@@ -30,16 +32,45 @@ async function hubspotFetch(path, options = {}) {
   return { response, body };
 }
 
-module.exports = async function handler(req, res) {
+async function upsertHubspotContact(email, properties) {
+  let hubspot = await hubspotFetch('/crm/v3/objects/contacts/' + encodeURIComponent(email) + '?idProperty=email', {
+    method: 'PATCH',
+    body: JSON.stringify({ properties })
+  });
+  if (hubspot.response.status === 404) {
+    hubspot = await hubspotFetch('/crm/v3/objects/contacts', {
+      method: 'POST',
+      body: JSON.stringify({ properties })
+    });
+  }
+  return hubspot;
+}
+
+function isUnknownHubspotProperty(body = {}) {
+  const msg = String(body.message || '').toLowerCase();
+  return msg.includes('property') && (msg.includes('does not exist') || msg.includes('unknown'));
+}
+
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
+  }
+
+  const authHeader = String(req.headers?.authorization || '').trim();
+  const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  if (!idToken) return res.status(401).json({ ok: false, error: 'Authentication required' });
+
+  try {
+    await adminAuth().verifyIdToken(idToken);
+  } catch {
+    return res.status(401).json({ ok: false, error: 'Invalid or expired session' });
   }
 
   if (!process.env.HUBSPOT_ACCESS_TOKEN) {
     return res.status(500).json({ ok: false, error: 'HUBSPOT_ACCESS_TOKEN is not configured' });
   }
 
-  const { candidate = {}, event = 'ats_sync' } = req.body || {};
+  const { candidate = {} } = req.body || {};
   if (!candidate.email) {
     return res.status(400).json({ ok: false, error: 'Candidate email is required' });
   }
@@ -89,24 +120,4 @@ module.exports = async function handler(req, res) {
     createdOrUpdated: true,
     nearworkPropertiesSkipped: !!hubspot.body.nearworkPropertiesSkipped
   });
-};
-
-async function upsertHubspotContact(email, properties) {
-  let hubspot = await hubspotFetch('/crm/v3/objects/contacts/' + encodeURIComponent(email) + '?idProperty=email', {
-    method: 'PATCH',
-    body: JSON.stringify({ properties })
-  });
-
-  if (hubspot.response.status === 404) {
-    hubspot = await hubspotFetch('/crm/v3/objects/contacts', {
-      method: 'POST',
-      body: JSON.stringify({ properties })
-    });
-  }
-  return hubspot;
-}
-
-function isUnknownHubspotProperty(body = {}) {
-  const msg = String(body.message || '').toLowerCase();
-  return msg.includes('property') && (msg.includes('does not exist') || msg.includes('unknown'));
 }

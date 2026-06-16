@@ -595,9 +595,13 @@ async function requestPasswordReset(email) {
 async function syncCandidateToHubSpot(candidate) {
   const email = candidate?.email || auth.currentUser?.email || "";
   if (!email) return { ok: false, skipped: true };
+  const idToken = await auth.currentUser?.getIdToken().catch(() => '');
   const response = await fetch("/api/sync-hubspot-candidate", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+    },
     body: JSON.stringify({ candidate: { ...candidate, email } })
   });
   return response.json().catch(() => ({ ok: false }));

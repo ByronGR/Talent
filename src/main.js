@@ -1,7 +1,7 @@
 import {
   applyToJob,
   auth,
-  confirmPasswordReset,
+
   createUserWithEmailAndPassword,
   deleteOwnAccount,
   getCandidateForAuthUser,

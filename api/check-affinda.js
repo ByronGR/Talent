@@ -1,7 +1,13 @@
 // GET /api/check-affinda
-// Quick health check: verifies AFFINDA_API_KEY is set and auth works.
+// Internal health check — requires X-Internal-Secret header matching INTERNAL_SECRET env var.
 
 export default async function handler(req, res) {
+  const secret = (process.env.INTERNAL_SECRET || '').trim();
+  const provided = (req.headers['x-internal-secret'] || '').trim();
+  if (!secret || provided !== secret) {
+    return res.status(404).json({ ok: false, error: 'Not found' });
+  }
+
   const key = (process.env.AFFINDA_API_KEY || "").trim();
   if (!key) {
     return res.status(200).json({ ok: false, error: "AFFINDA_API_KEY not set" });

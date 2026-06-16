@@ -3,9 +3,18 @@
 // Affinda Resume Parser as multipart/form-data, returns structured data.
 // The API key lives in process.env.AFFINDA_API_KEY (server-side only).
 
+import { checkRateLimit } from './_lib/rate-limit.js';
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
+
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'unknown';
+  const rl = await checkRateLimit({ key: `parse-cv:${ip}`, limit: 5, windowMs: 60 * 60 * 1000 }).catch(() => ({ allowed: true }));
+  if (!rl.allowed) {
+    res.setHeader('Retry-After', String(rl.retryAfter ?? 3600));
+    return res.status(429).json({ ok: false, error: 'Too many requests. Please try again later.' });
   }
 
   const key = (process.env.AFFINDA_API_KEY || "").trim();
