@@ -761,65 +761,159 @@ function renderShell(content) {
 
 function renderLogin(mode = "login") {
   const isSignup = mode === "signup";
-  renderShell(`
-    <section class="auth-panel">
-      <div class="auth-top">
-        <div class="right-brand">Near<span>work</span></div>
-        <div class="candidate-chip">For candidates</div>
-      </div>
-      <div class="panel-heading">
-        <h2>${isSignup ? "Create your account." : "Welcome back."}</h2>
-        <p>${isSignup ? "Create your profile, browse roles, and track your application." : "Log in to your dashboard to manage applications and interview requests."}</p>
-      </div>
-      <ul class="trust-points">
-        <li>${icon("check-circle-2")} 100% free for candidates, always</li>
-        <li>${icon("check-circle-2")} Real interviews with vetted US teams</li>
-      </ul>
-      ${state.message ? `<div class="notice">${icon("lock")} ${escapeAttr(state.message)}</div>` : ""}
-      ${hasFirebaseConfig ? "" : `<div class="notice">${icon("triangle-alert")} Sign-in is still being set up.</div>`}
-      <button id="googleSignIn" class="social-action" type="button">
-        <svg class="google-icon" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
-          <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
-          <path fill="#FBBC05" d="M3.964 10.706A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.038l3.007-2.332z"/>
-          <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.962L3.964 7.294C4.672 5.167 6.656 3.58 9 3.58z"/>
-        </svg>
-        Continue with Google
-      </button>
-      <div class="divider"><span></span>or email<span></span></div>
-      <form id="authForm" class="stacked-form">
-        ${isSignup ? `<label class="field-label">Full name<input name="name" type="text" autocomplete="name" placeholder="Full name" required /></label>` : ""}
-        <label class="field-label">Email address<input name="email" type="email" autocomplete="email" placeholder="you@example.com" required /></label>
-        <div class="field-group">
-          <div class="label-row">
-            <label class="field-label" for="passwordInput">Password</label>
-            ${isSignup ? "" : `<button type="button" id="resetPassword" class="forgot-link">Forgot?</button>`}
+  if (testimonialTimer) clearInterval(testimonialTimer);
+  testimonialTimer = null;
+  app.innerHTML = `
+    <main class="nw-login-grid">
+      <!-- Story panel (left) -->
+      <div class="nw-story-panel">
+        <div class="nw-story-texture"></div>
+        <div class="nw-story-glow"></div>
+        <div class="nw-story-inner">
+          <div class="nw-story-topbar">
+            <div class="nw-wordmark-login">Near<span>work</span></div>
+            <a class="nw-back-home" href="https://nearwork.co">${icon("arrow-left")} NEARWORK.CO</a>
           </div>
-          <div class="password-field">
-            <input id="passwordInput" name="password" type="password" autocomplete="${isSignup ? "new-password" : "current-password"}" minlength="6" placeholder="••••••••" required />
-            <button type="button" class="password-toggle" data-password-toggle aria-label="Show password">${icon("eye")}</button>
+          <div class="nw-story-body">
+            <div class="nw-story-badge">
+              <span class="nw-badge-dot"></span>
+              <span>5,000+ Colombian pros placed</span>
+            </div>
+            <h1 class="nw-story-headline">The bridge to your<br><span>next big leap.</span></h1>
+            <p class="nw-story-sub">A transparent journey from your current role to a world-class US career — paid in USD.</p>
+            <div class="nw-journey">
+              <div class="nw-journey-line"></div>
+              <div class="nw-step">
+                <div class="nw-step-node"><span></span></div>
+                <div class="nw-step-body">
+                  <div class="nw-step-num">STEP 01</div>
+                  <div class="nw-step-title">Apply once</div>
+                  <p class="nw-step-desc">One profile becomes your permanent ticket to high-growth US SaaS roles.</p>
+                </div>
+              </div>
+              <div class="nw-step">
+                <div class="nw-step-node"><span></span></div>
+                <div class="nw-step-body">
+                  <div class="nw-step-num">STEP 02</div>
+                  <div class="nw-step-title">21 days to a US company</div>
+                  <p class="nw-step-desc">Our matching engine skips the noise — interview and sign with a vetted US team, fast.</p>
+                  <div class="nw-step-tags"><span>Customer Success</span><span>SDR</span><span>Ops</span></div>
+                </div>
+              </div>
+              <div class="nw-step">
+                <div class="nw-step-node"><span></span></div>
+                <div class="nw-step-body">
+                  <div class="nw-step-num">STEP 03</div>
+                  <div class="nw-step-title">Earn in USD</div>
+                  <p class="nw-step-desc">Work remotely from Colombia, paid on a US salary band with full transparency.</p>
+                </div>
+              </div>
+            </div>
+            <div class="nw-offer-card">
+              <div class="nw-offer-head">
+                <span class="nw-offer-label">THE USD OFFER</span>
+                <span class="nw-offer-badge">+60% avg</span>
+              </div>
+              <div class="nw-offer-bars">
+                <div class="nw-bar">
+                  <div class="nw-bar-top">
+                    <span class="nw-bar-lbl">Bogotá market rate</span>
+                    <span class="nw-bar-val">$1,150</span>
+                  </div>
+                  <div class="nw-bar-track"><div class="nw-bar-fill" style="width:62%;background:rgba(255,255,255,0.30)"></div></div>
+                </div>
+                <div class="nw-bar">
+                  <div class="nw-bar-top">
+                    <span class="nw-bar-lbl">Nearwork USD offer</span>
+                    <span class="nw-bar-val nw-bar-val--main">$1,850</span>
+                  </div>
+                  <div class="nw-bar-track"><div class="nw-bar-fill" style="width:100%;background:linear-gradient(90deg,#16A085,#AF7AC5)"></div></div>
+                </div>
+              </div>
+              <div class="nw-offer-person">
+                <div class="nw-offer-avatar">VM</div>
+                <div>
+                  <div class="nw-offer-name">Valentina M.</div>
+                  <div class="nw-offer-role">Operations Lead · Bogotá</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="nw-story-foot">
+            ${icon("shield-check")} 100% free for candidates · Your data stays private
           </div>
         </div>
-        ${isSignup ? `
-        <div id="consentBlock" style="margin:2px 0 4px;">
-          <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:#2d2d2d;line-height:1.5;margin-bottom:3px;">
-            <input type="checkbox" name="privacyConsent" id="privacyConsent" style="width:16px!important;height:16px!important;min-height:16px!important;min-width:16px!important;padding:0!important;border:1px solid #aaa!important;border-radius:3px!important;background:#fff!important;flex-shrink:0;margin-top:3px;accent-color:#16a085;cursor:pointer;">
-            <span>I have read and agree to Nearwork's <a href="https://www.nearwork.co/privacy-policy" target="_blank" rel="noopener" style="color:#16a085;text-decoration:underline;">Privacy Policy</a>, <a href="https://www.nearwork.co/terms-of-service" target="_blank" rel="noopener" style="color:#16a085;text-decoration:underline;">Terms of Service</a> and <a href="https://www.nearwork.co/cookie-policy" target="_blank" rel="noopener" style="color:#16a085;text-decoration:underline;">Cookie Policy</a> *</span>
-          </label>
-          <p id="privacyConsentError" style="display:none;font-size:12px;color:#c0392b;margin:2px 0 6px 27px;">You must accept the Privacy Policy to continue</p>
-          <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;margin-top:10px;font-size:13px;color:#555;line-height:1.5;">
-            <input type="checkbox" name="marketingConsent" id="marketingConsent" style="width:16px!important;height:16px!important;min-height:16px!important;min-width:16px!important;padding:0!important;border:1px solid #aaa!important;border-radius:3px!important;background:#fff!important;flex-shrink:0;margin-top:3px;accent-color:#16a085;cursor:pointer;">
-            <span>I agree to receive future job opportunities and updates from Nearwork (optional)</span>
-          </label>
-        </div>` : ""}
-        <button class="primary-action" type="submit">${isSignup ? `${icon("user-plus")} Create account` : `Sign in ${icon("arrow-right")}`}</button>
-        <p id="formMessage" class="form-message" role="status"></p>
-      </form>
-      <button id="toggleMode" class="text-action" type="button">${isSignup ? "Already have an account? Sign in" : "New or invited by Nearwork? Create your profile"}</button>
-      <a class="back-jobboard" href="https://jobs.nearwork.co" target="_blank" rel="noreferrer">${icon("arrow-left")} Back to job board</a>
-      <p class="auth-footer">© ${new Date().getFullYear()} Nearwork Inc. All rights reserved.</p>
-    </section>
-  `);
+      </div>
+
+      <!-- Sign-in side (right) -->
+      <div class="nw-signin-side">
+        <div class="nw-signin-card">
+          <div class="nw-mobile-wm">Near<span>work</span></div>
+          <div class="nw-cand-chip"><span class="nw-cand-dot"></span>For candidates</div>
+          <h2 class="nw-signin-heading">${isSignup ? "Create your account." : "Welcome back."}</h2>
+          ${state.message ? `<div class="notice">${icon("lock")} ${escapeAttr(state.message)}</div>` : ""}
+          ${hasFirebaseConfig ? "" : `<div class="notice">${icon("triangle-alert")} Sign-in is still being set up.</div>`}
+          <button id="googleSignIn" class="nw-google-btn" type="button">
+            <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+              <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+              <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+              <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+              <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+            </svg>
+            Continue with Google
+          </button>
+          <div class="nw-email-divider"><span></span><span class="nw-divider-txt">OR EMAIL</span><span></span></div>
+          <form id="authForm" class="nw-auth-fields">
+            ${isSignup ? `
+            <div class="nw-field-wrap">
+              <label class="nw-field-label" for="nameInput">Full name</label>
+              <div class="nw-field-inner">
+                <input id="nameInput" class="nw-field-input" name="name" type="text" autocomplete="name" placeholder="Full name" required />
+              </div>
+            </div>` : ""}
+            <div class="nw-field-wrap">
+              <label class="nw-field-label" for="emailInput">Email address</label>
+              <div class="nw-field-inner">
+                <input id="emailInput" class="nw-field-input" name="email" type="email" autocomplete="email" placeholder="you@example.com" required />
+              </div>
+            </div>
+            <div class="nw-field-wrap">
+              <div class="nw-field-label-row">
+                <label class="nw-field-label" for="passwordInput">Password</label>
+                ${isSignup ? "" : `<button type="button" id="resetPassword" class="nw-forgot-link">Forgot?</button>`}
+              </div>
+              <div class="nw-field-inner">
+                <input id="passwordInput" class="nw-field-input" name="password" type="password" autocomplete="${isSignup ? "new-password" : "current-password"}" minlength="6" placeholder="••••••••" required />
+                <button type="button" class="nw-pw-toggle" data-password-toggle aria-label="Show password">${icon("eye")}</button>
+              </div>
+            </div>
+            ${isSignup ? `
+            <div id="consentBlock" style="margin:2px 0 4px;">
+              <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:13px;color:#2d2d2d;line-height:1.5;margin-bottom:3px;">
+                <input type="checkbox" name="privacyConsent" id="privacyConsent" style="width:16px!important;height:16px!important;min-height:16px!important;min-width:16px!important;padding:0!important;border:1px solid #aaa!important;border-radius:3px!important;background:#fff!important;flex-shrink:0;margin-top:3px;accent-color:#16a085;cursor:pointer;">
+                <span>I have read and agree to Nearwork's <a href="https://www.nearwork.co/privacy-policy" target="_blank" rel="noopener" style="color:#16a085;text-decoration:underline;">Privacy Policy</a>, <a href="https://www.nearwork.co/terms-of-service" target="_blank" rel="noopener" style="color:#16a085;text-decoration:underline;">Terms of Service</a> and <a href="https://www.nearwork.co/cookie-policy" target="_blank" rel="noopener" style="color:#16a085;text-decoration:underline;">Cookie Policy</a> *</span>
+              </label>
+              <p id="privacyConsentError" style="display:none;font-size:12px;color:#c0392b;margin:2px 0 6px 27px;">You must accept the Privacy Policy to continue</p>
+              <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;margin-top:10px;font-size:13px;color:#555;line-height:1.5;">
+                <input type="checkbox" name="marketingConsent" id="marketingConsent" style="width:16px!important;height:16px!important;min-height:16px!important;min-width:16px!important;padding:0!important;border:1px solid #aaa!important;border-radius:3px!important;background:#fff!important;flex-shrink:0;margin-top:3px;accent-color:#16a085;cursor:pointer;">
+                <span>I agree to receive future job opportunities and updates from Nearwork (optional)</span>
+              </label>
+            </div>` : ""}
+            <button class="nw-signin-btn" type="submit">
+              ${isSignup ? `${icon("user-plus")} Create account` : `Sign in ${icon("arrow-right")}`}
+            </button>
+            <p id="formMessage" class="form-message" role="status"></p>
+          </form>
+          <div class="nw-card-foot">
+            ${icon("sparkles")}
+            <button id="toggleMode" class="nw-create-link" type="button">${isSignup ? "Already have an account? Sign in" : "New or invited by Nearwork? Create your profile"}</button>
+          </div>
+          <a class="nw-back-jobs" href="https://jobs.nearwork.co" target="_blank" rel="noreferrer">${icon("arrow-left")} Back to job board</a>
+        </div>
+      </div>
+    </main>
+  `;
+  syncIcons();
 
   document.querySelector("#toggleMode").addEventListener("click", () => renderLogin(isSignup ? "login" : "signup"));
   document.querySelectorAll("[data-password-toggle]").forEach((btn) => {
