@@ -4,10 +4,20 @@
 // The API key lives in process.env.AFFINDA_API_KEY (server-side only).
 
 import { checkRateLimit } from './_lib/rate-limit.js';
+import { adminAuth } from './_lib/firebase-admin.js';
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
+
+  const authHeader = String(req.headers?.authorization || '').trim();
+  const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  if (!idToken) return res.status(401).json({ ok: false, error: 'Authentication required' });
+  try {
+    await adminAuth().verifyIdToken(idToken);
+  } catch {
+    return res.status(401).json({ ok: false, error: 'Invalid or expired session' });
   }
 
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'unknown';

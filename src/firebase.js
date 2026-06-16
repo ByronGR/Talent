@@ -735,9 +735,13 @@ async function parseCvWithAffinda(file) {
       reader.readAsDataURL(file);
     });
 
+    const idToken = await auth.currentUser?.getIdToken().catch(() => '') ?? '';
     const res = await fetch("/api/parse-cv", {
       method:  "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+      },
       body:    JSON.stringify({ data: base64, filename: file.name, mimeType: file.type || "application/octet-stream" }),
     });
     if (!res.ok) return null;

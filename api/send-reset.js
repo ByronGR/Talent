@@ -97,9 +97,13 @@ export default async function handler(req, res) {
 
   try {
     const emailApiUrl = process.env.EMAIL_API_URL || 'https://admin.nearwork.co/api/send-email';
+    const emailSecret = process.env.INTERNAL_EMAIL_SECRET || '';
     const response = await fetch(emailApiUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(emailSecret ? { 'X-Internal-Secret': emailSecret } : {}),
+      },
       body: JSON.stringify({
         to: email,
         templateId: 'candidate_password_reset',
