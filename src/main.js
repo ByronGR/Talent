@@ -929,7 +929,7 @@ function renderResetPassword() {
       </div>
       <div class="panel-heading">
         <h2>Set a new password.</h2>
-        <p>${email ? `Resetting password for <strong>${escapeHtml(email)}</strong>.` : "Create a strong new password for your account."}</p>
+        <p>${email ? `Resetting password for <strong>${escapeHtml(email)}</strong>. Choose a password you haven't used before.` : "Choose a new password you haven't used before."}</p>
       </div>
       ${!oobCode ? `
         <div class="notice">${icon("triangle-alert")} This link is invalid or has already been used. Request a new one below.</div>
