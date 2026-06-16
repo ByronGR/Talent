@@ -3,13 +3,15 @@ import {
   GoogleAuthProvider,
   getAdditionalUserInfo,
   getAuth,
+  confirmPasswordReset,
   onAuthStateChanged,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
   createUserWithEmailAndPassword,
   signOut,
-  updateProfile
+  updateProfile,
+  verifyPasswordResetCode
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import {
   addDoc,
@@ -578,6 +580,19 @@ async function deleteOwnAccount() {
   return data;
 }
 
+async function requestPasswordReset(email) {
+  const response = await fetch("/api/send-reset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, continueUrl: `${window.location.origin}/reset-password` })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || "Failed to send the reset email.");
+  }
+  return data;
+}
+
 async function syncCandidateToHubSpot(candidate) {
   const email = candidate?.email || auth.currentUser?.email || "";
   if (!email) return { ok: false, skipped: true };
@@ -735,6 +750,7 @@ async function parseCvWithAffinda(file) {
 export {
   applyToJob,
   auth,
+  confirmPasswordReset,
   createUserWithEmailAndPassword,
   deleteOwnAccount,
   findCandidateByEmail,
@@ -745,10 +761,12 @@ export {
   listCandidateAssessments,
   listOpenJobs,
   onAuthStateChanged,
+  requestPasswordReset,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithGoogle,
   signOut,
+  verifyPasswordResetCode,
   markNotificationRead,
   getCandidateAssessment,
   saveAssessmentAnswer,

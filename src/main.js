@@ -1,6 +1,7 @@
 import {
   applyToJob,
   auth,
+  confirmPasswordReset,
   createUserWithEmailAndPassword,
   deleteOwnAccount,
   getCandidateForAuthUser,
@@ -11,10 +12,10 @@ import {
   listOpenJobs,
   markNotificationRead,
   onAuthStateChanged,
+  requestPasswordReset,
   saveAssessmentAnswer,
   saveNotificationPreferences,
   sendCandidateAccountCreatedEmail,
-  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithGoogle,
   signOut,
@@ -27,6 +28,7 @@ import {
   uploadCandidateCv,
   uploadCandidatePhoto,
   upsertCandidate,
+  verifyPasswordResetCode,
   parseCvWithAffinda
 } from "./firebase.js";
 
@@ -266,7 +268,9 @@ let state = {
   showDeleteAccountModal: false,
   deleteAccountStatus: null,  // null | "deleting" | "error"
   deleteAccountError: "",
-  showUnsavedChangesModal: false
+  showUnsavedChangesModal: false,
+  resetCodeStatus: null,  // null | "resetting" | "error" | "success"
+  resetCodeError: "",
 };
 
 let notificationUnsubscribe = null;
@@ -857,8 +861,8 @@ function renderLogin(mode = "login") {
       return;
     }
     try {
-      await sendPasswordResetEmail(auth, email);
-      message.textContent = `Password reset sent to ${email}.`;
+      await requestPasswordReset(email);
+      message.textContent = `If an account exists for ${email}, a password reset email is on its way.`;
     } catch (error) {
       message.textContent = friendlyAuthError(error);
     }
@@ -908,6 +912,98 @@ function renderLogin(mode = "login") {
       }
     } catch (error) {
       message.textContent = friendlyAuthError(error);
+    }
+  });
+}
+
+function renderResetPassword() {
+  const params = new URLSearchParams(window.location.search);
+  const oobCode = params.get("oobCode") || "";
+  const email = params.get("email") || "";
+
+  renderShell(`
+    <section class="auth-panel">
+      <div class="auth-top">
+        <div class="right-brand">Near<span>work</span></div>
+        <div class="candidate-chip">Candidate portal</div>
+      </div>
+      <div class="panel-heading">
+        <h2>Set a new password.</h2>
+        <p>${email ? `Resetting password for <strong>${escapeHtml(email)}</strong>.` : "Create a strong new password for your account."}</p>
+      </div>
+      ${!oobCode ? `
+        <div class="notice">${icon("triangle-alert")} This link is invalid or has already been used. Request a new one below.</div>
+        <button class="primary-action" type="button" id="backToLogin">Back to sign in</button>
+      ` : state.resetCodeStatus === "success" ? `
+        <div class="notice">${icon("check-circle-2")} Password updated! Sign in with your new password.</div>
+        <button class="primary-action" type="button" id="backToLogin">Sign in</button>
+      ` : `
+      <form id="resetForm" class="stacked-form">
+        <div class="field-group">
+          <label class="field-label" for="newPassword">New password</label>
+          <div class="password-field">
+            <input id="newPassword" name="newPassword" type="password" autocomplete="new-password" minlength="6" placeholder="••••••••" required />
+            <button type="button" class="password-toggle" data-password-toggle aria-label="Show password">${icon("eye")}</button>
+          </div>
+        </div>
+        <div class="field-group">
+          <label class="field-label" for="confirmPassword">Confirm password</label>
+          <div class="password-field">
+            <input id="confirmPassword" name="confirmPassword" type="password" autocomplete="new-password" minlength="6" placeholder="••••••••" required />
+            <button type="button" class="password-toggle" data-password-toggle aria-label="Show confirm">${icon("eye")}</button>
+          </div>
+        </div>
+        ${state.resetCodeStatus === "error" ? `<div class="notice">${icon("triangle-alert")} ${escapeHtml(state.resetCodeError || "Something went wrong. Please request a new link.")}</div>` : ""}
+        <button class="primary-action" type="submit" ${state.resetCodeStatus === "resetting" ? "disabled" : ""}>
+          ${state.resetCodeStatus === "resetting" ? "Updating…" : `${icon("lock")} Set new password`}
+        </button>
+        <p id="formMessage" class="form-message" role="status"></p>
+      </form>
+      <button id="backToLogin" class="text-action" type="button">Back to sign in</button>
+      `}
+      <p class="auth-footer">© ${new Date().getFullYear()} Nearwork Inc. All rights reserved.</p>
+    </section>
+  `);
+
+  document.querySelectorAll("[data-password-toggle]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const input = btn.previousElementSibling;
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      btn.innerHTML = icon(show ? "eye-off" : "eye");
+      btn.setAttribute("aria-label", show ? "Hide password" : "Show password");
+      syncIcons();
+    });
+  });
+
+  document.querySelector("#backToLogin")?.addEventListener("click", () => {
+    const msg = state.resetCodeStatus === "success"
+      ? "Your password has been reset. Sign in with your new password."
+      : "";
+    window.history.pushState({}, "", "/");
+    setState({ view: "login", message: msg, resetCodeStatus: null, resetCodeError: "" });
+  });
+
+  document.querySelector("#resetForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const newPassword = document.querySelector("#newPassword").value;
+    const confirmPassword = document.querySelector("#confirmPassword").value;
+    if (newPassword !== confirmPassword) {
+      setState({ resetCodeStatus: "error", resetCodeError: "Passwords do not match." });
+      return;
+    }
+    if (newPassword.length < 6) {
+      setState({ resetCodeStatus: "error", resetCodeError: "Password must be at least 6 characters." });
+      return;
+    }
+    setState({ resetCodeStatus: "resetting" });
+    try {
+      await confirmPasswordReset(auth, oobCode, newPassword);
+      setState({ resetCodeStatus: "success" });
+    } catch (error) {
+      let msg = "This link has expired or already been used. Please request a new one.";
+      if (error?.code === "auth/weak-password") msg = "Password must be at least 6 characters.";
+      setState({ resetCodeStatus: "error", resetCodeError: msg });
     }
   });
 }
@@ -995,6 +1091,13 @@ async function loadDashboard(user) {
 }
 
 async function loadPublicPage() {
+  if (window.location.pathname === "/reset-password") {
+    if (notificationUnsubscribe) notificationUnsubscribe();
+    notificationUnsubscribe = null;
+    setState({ user: null, candidate: null, loading: false, view: "reset-password", resetCodeStatus: null });
+    return;
+  }
+
   const activePage = pageFromPath();
   if (activePage === "assessment") {
     sessionStorage.setItem("nw_restore_path", window.location.pathname);
@@ -4114,11 +4217,16 @@ function bindSkillSearch() {
 
 function render() {
   if (state.loading) return renderLoading();
+  if (state.view === "reset-password") return renderResetPassword();
   if (state.view === "dashboard") return renderDashboard();
   renderLogin();
 }
 
 window.addEventListener("popstate", () => {
+  if (window.location.pathname === "/reset-password") {
+    setState({ view: "reset-password", resetCodeStatus: null, resetCodeError: "" });
+    return;
+  }
   const page = pageFromPath();
   if (page === "overview" && !state.user) {
     setState({ view: "login", activePage: "overview", message: "" });
