@@ -3260,7 +3260,7 @@ function renderProfileForm(mode = "profile") {
           <h3>Delete your account?</h3>
           <p>This will permanently delete your profile, resume, applications, and assessment history from Nearwork. This cannot be undone.</p>
           <label class="pf-field">
-            ${pfLabel("Type DELETE to confirm")}
+            <span class="pf-label" style="text-transform:none;">Type DELETE to confirm</span>
             <input class="pf-input" id="deleteConfirmInput" autocomplete="off" />
           </label>
           ${state.deleteAccountStatus === "error" ? `<div class="nw-modal-error">${escapeHtml(state.deleteAccountError || "Something went wrong.")}</div>` : ""}
