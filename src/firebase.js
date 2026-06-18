@@ -8,6 +8,7 @@ import {
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithCustomToken,
   createUserWithEmailAndPassword,
   signOut,
   updateProfile,
@@ -765,6 +766,10 @@ async function parseCvWithAffinda(file) {
   }
 }
 
+async function signInWithHandoffToken(customToken) {
+  return signInWithCustomToken(auth, customToken);
+}
+
 export {
   applyToJob,
   auth,
@@ -798,5 +803,6 @@ export {
   uploadCandidateCv,
   uploadCandidatePhoto,
   upsertCandidate,
-  parseCvWithAffinda
+  parseCvWithAffinda,
+  signInWithHandoffToken
 };

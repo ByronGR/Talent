@@ -29,7 +29,8 @@ import {
   uploadCandidatePhoto,
   upsertCandidate,
   verifyPasswordResetCode,
-  parseCvWithAffinda
+  parseCvWithAffinda,
+  signInWithHandoffToken
 } from "./firebase.js";
 
 // Holds data extracted by Affinda until the profile form is saved.
@@ -4336,8 +4337,14 @@ window.addEventListener("popstate", () => {
   }
 });
 
+// Cross-domain sign-in handoff from jobs.nearwork.co: ?ct=<customToken>
+const _pendingCt = new URLSearchParams(window.location.search).get('ct');
+if (_pendingCt) window.history.replaceState({}, '', window.location.pathname);
+let _ctPending = Boolean(_pendingCt);
+
 if (hasFirebaseConfig) {
   onAuthStateChanged(auth, (user) => {
+    if (_ctPending) return; // custom token sign-in in flight — wait for it
     if (user) {
       loadDashboard(user);
     } else {
@@ -4348,8 +4355,16 @@ if (hasFirebaseConfig) {
     }
   });
   window.setTimeout(() => {
-    if (state.loading) loadPublicPage();
+    if (state.loading) {
+      _ctPending = false;
+      loadPublicPage();
+    }
   }, 2500);
+  if (_pendingCt) {
+    signInWithHandoffToken(_pendingCt)
+      .then(() => { _ctPending = false; })
+      .catch(() => { _ctPending = false; loadPublicPage(); });
+  }
 } else {
   loadPublicPage();
 }
