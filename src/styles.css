@@ -834,6 +834,15 @@ input[type="radio"]:focus {
   font-weight: 700;
 }
 
+.form-message.success {
+  color: #0d6e4a;
+  background: #d1fae5;
+  border: 1px solid #6ee7b7;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-weight: 600;
+}
+
 .dashboard {
   display: grid;
   grid-template-columns: 240px 1fr;

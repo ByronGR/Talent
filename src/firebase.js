@@ -1,5 +1,4 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app-check.js";
 import {
   GoogleAuthProvider,
   getAdditionalUserInfo,
@@ -54,16 +53,6 @@ const hasFirebaseConfig = Object.values(firebaseConfig)
   .every(Boolean);
 
 const app = hasFirebaseConfig ? initializeApp(firebaseConfig) : null;
-if (app) {
-  try {
-    initializeAppCheck(app, {
-      provider: new ReCaptchaV3Provider('6LdijCltAAAAA07O_nBCe-h2keUYjCnjrVRCksqi'),
-      isTokenAutoRefreshEnabled: true,
-    });
-  } catch (e) {
-    console.warn('App Check init skipped:', e?.message);
-  }
-}
 const auth = app ? getAuth(app) : null;
 const db = app ? getFirestore(app) : null;
 const storage = app ? getStorage(app) : null;

@@ -952,13 +952,16 @@ function renderLogin(mode = "login") {
     const email = document.querySelector("input[name='email']").value.trim().toLowerCase();
     const message = document.querySelector("#formMessage");
     if (!email) {
+      message.classList.remove("success");
       message.textContent = "Enter your email first, then request a reset link.";
       return;
     }
     try {
       await requestPasswordReset(email);
-      message.textContent = `If an account exists for ${email}, a password reset email is on its way.`;
+      message.classList.add("success");
+      message.textContent = `Reset link sent! Check ${email} — it should arrive within a minute.`;
     } catch (error) {
+      message.classList.remove("success");
       message.textContent = friendlyAuthError(error);
     }
   });
@@ -1579,7 +1582,7 @@ function renderOverview() {
         ${matched.length ? `<div class="nw-match-why">${matched.slice(0,3).map(escapeHtml).join(" · ")} match</div>` : `<div class="nw-match-why">${escapeHtml(role.description).slice(0, 80)}…</div>`}
         <div class="nw-match-footer">
           <span class="nw-match-salary">${escapeHtml(role.compensation)}</span>
-          <a href="${openingUrl}" target="_blank" rel="noreferrer" class="nw-match-apply">Apply ${icon("arrow-right")}</a>
+          <button type="button" class="nw-match-apply" data-open-url="${escapeAttr(openingUrl)}">Apply ${icon("arrow-right")}</button>
         </div>
       </div>`;
   };
@@ -3409,6 +3412,28 @@ function renderLoading() {
   app.innerHTML = `<main class="loading-screen"><span class="logo-mark">N</span><p>Loading Talent...</p></main>`;
 }
 
+async function openWithHandoff(url) {
+  try {
+    const idToken = await auth.currentUser?.getIdToken().catch(() => '');
+    if (idToken) {
+      const r = await fetch('/api/auth-handoff', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + idToken, 'Content-Type': 'application/json' }
+      });
+      if (r.ok) {
+        const { customToken } = await r.json();
+        if (customToken) {
+          const dest = new URL(url);
+          dest.searchParams.set('ct', customToken);
+          window.open(dest.toString(), '_blank', 'noreferrer');
+          return;
+        }
+      }
+    }
+  } catch (_e) {}
+  window.open(url, '_blank', 'noreferrer');
+}
+
 function bindDashboardEvents() {
   document.querySelector("#signOut")?.addEventListener("click", async () => {
     await signOut(auth);
@@ -3584,6 +3609,9 @@ function bindDashboardEvents() {
   bindCertEditor();
   bindLangEditor();
   bindProfileTabs();
+  document.querySelectorAll("[data-open-url]").forEach((btn) => {
+    btn.addEventListener("click", () => openWithHandoff(btn.dataset.openUrl));
+  });
   document.querySelectorAll("[data-apply]").forEach((button) => {
     button.addEventListener("click", async () => {
       const job = state.jobs.map(normalizeRole).find((item) => item.code === button.dataset.apply);
