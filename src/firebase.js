@@ -42,7 +42,7 @@ import {
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyApRNyW8PoP28E0x77dUB5jOgHuTqA2by4",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "nearwork-97e3c.firebaseapp.com",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "talent.nearwork.co",
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "nearwork-97e3c",
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "nearwork-97e3c.firebasestorage.app",
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "145642656516",
