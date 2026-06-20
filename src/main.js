@@ -945,6 +945,11 @@ function renderLogin(mode = "login") {
     try {
       await signInWithGoogle(marketingConsent);
     } catch (error) {
+      console.error('[NW] Google sign-in failed', {
+        code: error?.code,
+        message: error?.message,
+        serverResponse: error?.customData?.serverResponse
+      });
       message.textContent = friendlyAuthError(error);
     }
   });
