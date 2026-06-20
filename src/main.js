@@ -4377,28 +4377,43 @@ if (_pendingCt) window.history.replaceState({}, '', window.location.pathname);
 let _ctPending = Boolean(_pendingCt);
 
 if (hasFirebaseConfig) {
-  // Process any pending Google redirect result (new-user upsert, welcome email).
-  // Fire-and-forget — auth state change below handles the UI transition.
-  handleGoogleRedirectResult().catch(e => {
-    console.error("[NW] Google redirect result failed:", e?.code, e?.message);
-  });
-  onAuthStateChanged(auth, (user) => {
-    if (_ctPending) return; // custom token sign-in in flight — wait for it
-    if (user) {
-      loadDashboard(user);
-    } else {
-      // Clear any cached applied/session data so stale badges don't survive
-      // account deletion or external session revocation.
-      try { localStorage.removeItem("nw_talent_applied"); } catch {}
-      loadPublicPage();
-    }
-  });
-  window.setTimeout(() => {
-    if (state.loading) {
-      _ctPending = false;
-      loadPublicPage();
-    }
-  }, 2500);
+  // Process any pending Google redirect FIRST, then register the auth state
+  // listener. This ensures getRedirectResult() completes the sign-in before
+  // onAuthStateChanged fires, so it never sees a transient null-user state
+  // and incorrectly lands the user on the public page.
+  let _googleRedirectError = null;
+  handleGoogleRedirectResult()
+    .catch(e => {
+      console.error("[NW] Google redirect result failed:", e?.code, e?.message);
+      _googleRedirectError = e;
+    })
+    .finally(() => {
+      onAuthStateChanged(auth, (user) => {
+        if (_ctPending) return; // custom token sign-in in flight — wait for it
+        if (user) {
+          loadDashboard(user);
+        } else {
+          // Clear any cached applied/session data so stale badges don't survive
+          // account deletion or external session revocation.
+          try { localStorage.removeItem("nw_talent_applied"); } catch {}
+          loadPublicPage();
+          // Surface Google redirect errors in the login form message
+          if (_googleRedirectError) {
+            setTimeout(() => {
+              const el = document.querySelector("#formMessage");
+              if (el) el.textContent = friendlyAuthError(_googleRedirectError);
+              _googleRedirectError = null;
+            }, 0);
+          }
+        }
+      });
+      window.setTimeout(() => {
+        if (state.loading) {
+          _ctPending = false;
+          loadPublicPage();
+        }
+      }, 2500);
+    });
   if (_pendingCt) {
     signInWithHandoffToken(_pendingCt)
       .then(() => { _ctPending = false; })

@@ -8,6 +8,7 @@ import {
   signInWithEmailAndPassword,
   signInWithRedirect,
   getRedirectResult,
+  browserPopupRedirectResolver,
   signInWithCustomToken,
   createUserWithEmailAndPassword,
   signOut,
@@ -268,7 +269,7 @@ function toAtsCandidate(uid, data) {
 async function signInWithGoogle(marketingConsent = false) {
   requireFirebase();
   sessionStorage.setItem("nw_g_consent", marketingConsent ? "1" : "0");
-  await signInWithRedirect(auth, googleProvider);
+  await signInWithRedirect(auth, googleProvider, browserPopupRedirectResolver);
   // Page navigates away — nothing below executes
 }
 
@@ -276,7 +277,7 @@ export async function handleGoogleRedirectResult() {
   requireFirebase();
   let result;
   try {
-    result = await getRedirectResult(auth);
+    result = await getRedirectResult(auth, browserPopupRedirectResolver);
   } catch (e) {
     console.error("[NW] Google redirect error", { code: e?.code, message: e?.message });
     throw e;
