@@ -1549,7 +1549,7 @@ function renderOverview() {
         ${matched.length ? `<div class="nw-match-why">${matched.slice(0,3).map(escapeHtml).join(" · ")} match</div>` : `<div class="nw-match-why">${escapeHtml(role.description).slice(0, 80)}…</div>`}
         <div class="nw-match-footer">
           <span class="nw-match-salary">${escapeHtml(role.compensation)}</span>
-          <button type="button" class="nw-match-apply" data-open-url="${escapeAttr(openingUrl)}">Apply ${icon("arrow-right")}</button>
+          <button type="button" class="nw-match-apply" data-apply="${escapeAttr(role.code)}">Apply ${icon("arrow-right")}</button>
         </div>
       </div>`;
   };
@@ -3326,7 +3326,7 @@ function jobCard(job) {
       <div class="nw-match-chips">${chips.map(escapeHtml).map((s) => `<span class="nw-match-chip">${s}</span>`).join("")}</div>
       <div class="nw-match-footer">
         <span class="nw-match-salary">${escapeHtml(role.compensation)}</span>
-        <a href="${openingUrl}" target="_blank" rel="noreferrer" class="nw-match-view">View opening ${icon("arrow-up-right")}</a>
+        <button type="button" class="nw-match-view" data-open-url="${escapeAttr(openingUrl)}">View opening ${icon("arrow-up-right")}</button>
       </div>
       <button class="nw-match-applybtn${applied ? " applied" : ""}" type="button" data-apply="${role.code}" ${applied ? "disabled" : ""}>${applied ? `${icon("check")} Applied` : `Apply now ${icon("arrow-right")}`}</button>
     </div>
