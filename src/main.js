@@ -18,6 +18,7 @@ import {
   sendCandidateAccountCreatedEmail,
   signInWithEmailAndPassword,
   signInWithGoogle,
+  handleGoogleRedirectResult,
   signOut,
   startCandidateAssessment,
   subscribeToNotifications,
@@ -4376,6 +4377,11 @@ if (_pendingCt) window.history.replaceState({}, '', window.location.pathname);
 let _ctPending = Boolean(_pendingCt);
 
 if (hasFirebaseConfig) {
+  // Process any pending Google redirect result (new-user upsert, welcome email).
+  // Fire-and-forget — auth state change below handles the UI transition.
+  handleGoogleRedirectResult().catch(e => {
+    console.error("[NW] Google redirect result failed:", e?.code, e?.message);
+  });
   onAuthStateChanged(auth, (user) => {
     if (_ctPending) return; // custom token sign-in in flight — wait for it
     if (user) {

@@ -6,7 +6,8 @@ import {
   onAuthStateChanged,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithCustomToken,
   createUserWithEmailAndPassword,
   signOut,
@@ -266,11 +267,23 @@ function toAtsCandidate(uid, data) {
 
 async function signInWithGoogle(marketingConsent = false) {
   requireFirebase();
-  const result = await signInWithPopup(auth, googleProvider);
-  // Firebase's own signal for "this Google sign-in just created the Auth account" —
-  // more reliable than checking Firestore, since a same-email profile created
-  // elsewhere (e.g. via Jobs) under a different uid can otherwise mask a brand-new
-  // Google account and suppress the welcome email.
+  sessionStorage.setItem("nw_g_consent", marketingConsent ? "1" : "0");
+  await signInWithRedirect(auth, googleProvider);
+  // Page navigates away — nothing below executes
+}
+
+export async function handleGoogleRedirectResult() {
+  requireFirebase();
+  let result;
+  try {
+    result = await getRedirectResult(auth);
+  } catch (e) {
+    console.error("[NW] Google redirect error", { code: e?.code, message: e?.message });
+    throw e;
+  }
+  if (!result) return null;
+  const marketingConsent = sessionStorage.getItem("nw_g_consent") === "1";
+  sessionStorage.removeItem("nw_g_consent");
   const isNewAuthAccount = getAdditionalUserInfo(result)?.isNewUser === true;
   const profile = await getCandidateForAuthUser(result.user);
   const consentAt = new Date().toISOString();
@@ -281,7 +294,7 @@ async function signInWithGoogle(marketingConsent = false) {
     onboarded: false,
     privacyConsent: true,
     privacyConsentAt: consentAt,
-    marketingConsent: marketingConsent,
+    marketingConsent,
     marketingConsentAt: marketingConsent ? consentAt : null
   };
   const isNewAccount = !profile;
@@ -294,7 +307,6 @@ async function signInWithGoogle(marketingConsent = false) {
   const candidateCode = candidateCodeForUid(result.user.uid);
   const merged = { ...(profile || basicData), candidateCode };
   await setDoc(doc(db, collections.candidates, candidateCode), toAtsCandidate(result.user.uid, merged), { merge: true }).catch(() => null);
-  // Sync to HubSpot only for new accounts with marketing consent, or existing accounts that previously consented
   const effectiveConsent = isNewAccount ? marketingConsent : (profile?.marketingConsent === true);
   if (effectiveConsent) {
     syncCandidateToHubSpot({ ...merged, candidateCode, source: "talent.nearwork.co" }).catch(() => null);
