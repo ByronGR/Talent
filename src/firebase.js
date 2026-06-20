@@ -1,13 +1,9 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import {
-  GoogleAuthProvider,
-  getAdditionalUserInfo,
-  initializeAuth, browserLocalPersistence,
+  getAuth,
   onAuthStateChanged,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
-  signInWithRedirect,
-  getRedirectResult,
   signInWithCustomToken,
   createUserWithEmailAndPassword,
   signOut,
@@ -54,10 +50,9 @@ const hasFirebaseConfig = Object.values(firebaseConfig)
   .every(Boolean);
 
 const app = hasFirebaseConfig ? initializeApp(firebaseConfig) : null;
-const auth = app ? initializeAuth(app, { persistence: [browserLocalPersistence] }) : null;
+const auth = app ? getAuth(app) : null;
 const db = app ? getFirestore(app) : null;
 const storage = app ? getStorage(app) : null;
-const googleProvider = app ? new GoogleAuthProvider() : null;
 
 const collections = {
   users: "users",
@@ -265,54 +260,6 @@ function toAtsCandidate(uid, data) {
   };
 }
 
-async function signInWithGoogle(marketingConsent = false) {
-  requireFirebase();
-  sessionStorage.setItem("nw_g_consent", marketingConsent ? "1" : "0");
-  await signInWithRedirect(auth, googleProvider);
-  // Page navigates away — nothing below executes
-}
-
-export async function handleGoogleRedirectResult() {
-  requireFirebase();
-  let result;
-  try {
-    result = await getRedirectResult(auth);
-  } catch (e) {
-    console.error("[NW] Google redirect error", { code: e?.code, message: e?.message });
-    throw e;
-  }
-  if (!result) return null;
-  const marketingConsent = sessionStorage.getItem("nw_g_consent") === "1";
-  sessionStorage.removeItem("nw_g_consent");
-  const isNewAuthAccount = getAdditionalUserInfo(result)?.isNewUser === true;
-  const profile = await getCandidateForAuthUser(result.user);
-  const consentAt = new Date().toISOString();
-  const basicData = {
-    email: result.user.email,
-    name: result.user.displayName || "",
-    availability: "open",
-    onboarded: false,
-    privacyConsent: true,
-    privacyConsentAt: consentAt,
-    marketingConsent,
-    marketingConsentAt: marketingConsent ? consentAt : null
-  };
-  const isNewAccount = !profile;
-  if (isNewAccount) {
-    await upsertCandidate(result.user.uid, basicData);
-  }
-  if (isNewAuthAccount) {
-    sendCandidateAccountCreatedEmail(basicData).catch(() => null);
-  }
-  const candidateCode = candidateCodeForUid(result.user.uid);
-  const merged = { ...(profile || basicData), candidateCode };
-  await setDoc(doc(db, collections.candidates, candidateCode), toAtsCandidate(result.user.uid, merged), { merge: true }).catch(() => null);
-  const effectiveConsent = isNewAccount ? marketingConsent : (profile?.marketingConsent === true);
-  if (effectiveConsent) {
-    syncCandidateToHubSpot({ ...merged, candidateCode, source: "talent.nearwork.co" }).catch(() => null);
-  }
-  return result.user;
-}
 
 async function listCandidateApplications(uid) {
   requireFirebase();
@@ -787,7 +734,6 @@ export {
   requestPasswordReset,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
-  signInWithGoogle,
   signOut,
   verifyPasswordResetCode,
   markNotificationRead,

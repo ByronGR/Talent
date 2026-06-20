@@ -17,8 +17,6 @@ import {
   saveNotificationPreferences,
   sendCandidateAccountCreatedEmail,
   signInWithEmailAndPassword,
-  signInWithGoogle,
-  handleGoogleRedirectResult,
   signOut,
   startCandidateAssessment,
   subscribeToNotifications,
@@ -606,10 +604,9 @@ function friendlyAuthError(error) {
   if (code.includes("unauthorized-domain")) return "This website still needs to be approved for sign-in.";
   if (code.includes("permission-denied")) return "We could not save this yet. Please try again in a moment or contact Nearwork support.";
   if (code.includes("weak-password")) return "Password must be at least 6 characters.";
-  if (code.includes("invalid-credential") || code.includes("wrong-password")) return "That email/password did not match. If this account was created with Google, use Continue with Google.";
+  if (code.includes("invalid-credential") || code.includes("wrong-password")) return "That email/password did not match.";
   if (code.includes("user-not-found")) return "No account exists for that email yet.";
-  if (code.includes("email-already-in-use")) return "That email already has an account. Sign in or use Google.";
-  if (code.includes("popup")) return "The Google sign-in popup was closed before finishing.";
+  if (code.includes("email-already-in-use")) return "That email already has an account. Sign in instead.";
   return "Something went wrong. Please try again or contact Nearwork support.";
 }
 
@@ -855,16 +852,6 @@ function renderLogin(mode = "login") {
           <h2 class="nw-signin-heading">${isSignup ? "Create your account." : "Welcome back."}</h2>
           ${state.message ? `<div class="notice">${icon("lock")} ${escapeAttr(state.message)}</div>` : ""}
           ${hasFirebaseConfig ? "" : `<div class="notice">${icon("triangle-alert")} Sign-in is still being set up.</div>`}
-          <button id="googleSignIn" class="nw-google-btn" type="button">
-            <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
-              <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-              <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-              <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-              <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-            </svg>
-            Continue with Google
-          </button>
-          <div class="nw-email-divider"><span></span><span class="nw-divider-txt">OR EMAIL</span><span></span></div>
           <form id="authForm" class="nw-auth-fields">
             ${isSignup ? `
             <div class="nw-field-wrap">
@@ -927,32 +914,6 @@ function renderLogin(mode = "login") {
       btn.setAttribute("aria-label", show ? "Hide password" : "Show password");
       syncIcons();
     });
-  });
-  document.querySelector("#googleSignIn").addEventListener("click", async () => {
-    const message = document.querySelector("#formMessage");
-    message.textContent = "";
-    if (isSignup) {
-      const privacyBox = document.querySelector("#privacyConsent");
-      const privacyError = document.querySelector("#privacyConsentError");
-      if (privacyBox && !privacyBox.checked) {
-        if (privacyError) privacyError.style.display = "";
-        message.textContent = "Please accept the Privacy Policy to continue.";
-        privacyBox.scrollIntoView({ behavior: "smooth", block: "center" });
-        return;
-      }
-      if (privacyError) privacyError.style.display = "none";
-    }
-    const marketingConsent = isSignup ? (document.querySelector("#marketingConsent")?.checked === true) : false;
-    try {
-      await signInWithGoogle(marketingConsent);
-    } catch (error) {
-      console.error('[NW] Google sign-in failed', {
-        code: error?.code,
-        message: error?.message,
-        serverResponse: error?.customData?.serverResponse
-      });
-      message.textContent = friendlyAuthError(error);
-    }
   });
   document.querySelector("#resetPassword")?.addEventListener("click", async () => {
     const email = document.querySelector("input[name='email']").value.trim().toLowerCase();
@@ -3575,7 +3536,7 @@ function bindDashboardEvents() {
     const availability = event.target.value;
     setState({ candidate: { ...state.candidate, availability } });
     if (state.user && hasFirebaseConfig) await updateCandidateAvailability(state.user.uid, availability);
-    else setState({ message: "Sign in with Google to save availability." });
+    else setState({ message: "Sign in to save availability." });
   });
   document.querySelector("#filterMatches")?.addEventListener("click", () => {
     const hasProfileSignals = candidateSkills().length >= 3;
@@ -3635,7 +3596,7 @@ function bindDashboardEvents() {
         await loadDashboard(state.user);
         setActivePage("applications");
       } else {
-        setState({ message: "Sign in with Google to apply to this opening." });
+        setState({ message: "Sign in to apply to this opening." });
       }
     });
   });
@@ -3828,7 +3789,7 @@ function bindDashboardEvents() {
       onboarded: true
     };
     if (!state.user) {
-      setState({ candidate: { ...state.candidate, ...data }, message: "Preview updated. Sign in with Google to save this profile." });
+      setState({ candidate: { ...state.candidate, ...data }, message: "Preview updated. Sign in to save this profile." });
       return;
     }
     try {
@@ -3910,7 +3871,7 @@ function bindDashboardEvents() {
     const file = form.get("cv");
     if (!file?.name) return;
     if (!state.user) {
-      setState({ message: "Sign in with Google to upload and store CVs." });
+      setState({ message: "Sign in to upload and store CVs." });
       return;
     }
     try {
@@ -4377,43 +4338,21 @@ if (_pendingCt) window.history.replaceState({}, '', window.location.pathname);
 let _ctPending = Boolean(_pendingCt);
 
 if (hasFirebaseConfig) {
-  // Process any pending Google redirect FIRST, then register the auth state
-  // listener. This ensures getRedirectResult() completes the sign-in before
-  // onAuthStateChanged fires, so it never sees a transient null-user state
-  // and incorrectly lands the user on the public page.
-  let _googleRedirectError = null;
-  handleGoogleRedirectResult()
-    .catch(e => {
-      console.error("[NW] Google redirect result failed:", e?.code, e?.message);
-      _googleRedirectError = e;
-    })
-    .finally(() => {
-      onAuthStateChanged(auth, (user) => {
-        if (_ctPending) return; // custom token sign-in in flight — wait for it
-        if (user) {
-          loadDashboard(user);
-        } else {
-          // Clear any cached applied/session data so stale badges don't survive
-          // account deletion or external session revocation.
-          try { localStorage.removeItem("nw_talent_applied"); } catch {}
-          loadPublicPage();
-          // Surface Google redirect errors in the login form message
-          if (_googleRedirectError) {
-            setTimeout(() => {
-              const el = document.querySelector("#formMessage");
-              if (el) el.textContent = friendlyAuthError(_googleRedirectError);
-              _googleRedirectError = null;
-            }, 0);
-          }
-        }
-      });
-      window.setTimeout(() => {
-        if (state.loading) {
-          _ctPending = false;
-          loadPublicPage();
-        }
-      }, 2500);
-    });
+  onAuthStateChanged(auth, (user) => {
+    if (_ctPending) return;
+    if (user) {
+      loadDashboard(user);
+    } else {
+      try { localStorage.removeItem("nw_talent_applied"); } catch {}
+      loadPublicPage();
+    }
+  });
+  window.setTimeout(() => {
+    if (state.loading) {
+      _ctPending = false;
+      loadPublicPage();
+    }
+  }, 2500);
   if (_pendingCt) {
     signInWithHandoffToken(_pendingCt)
       .then(() => { _ctPending = false; })
