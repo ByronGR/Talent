@@ -2,7 +2,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/fireba
 import {
   GoogleAuthProvider,
   getAdditionalUserInfo,
-  getAuth,
+  initializeAuth, browserLocalPersistence,
   onAuthStateChanged,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
@@ -54,7 +54,7 @@ const hasFirebaseConfig = Object.values(firebaseConfig)
   .every(Boolean);
 
 const app = hasFirebaseConfig ? initializeApp(firebaseConfig) : null;
-const auth = app ? getAuth(app) : null;
+const auth = app ? initializeAuth(app, { persistence: [browserLocalPersistence] }) : null;
 const db = app ? getFirestore(app) : null;
 const storage = app ? getStorage(app) : null;
 const googleProvider = app ? new GoogleAuthProvider() : null;
