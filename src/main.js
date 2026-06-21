@@ -967,11 +967,11 @@ function renderLogin(mode = "login") {
           marketingConsent,
           marketingConsentAt: marketingConsent ? consentAt : null
         });
-        sendCandidateAccountCreatedEmail({
+        await sendCandidateAccountCreatedEmail({
           name: form.get("name"),
           firstName: String(form.get("name") || "").trim().split(/\s+/)[0],
           email
-        }).catch(() => null);
+        }).catch((e) => console.error("[NW] account email failed:", e?.message));
       } else {
         await signInWithEmailAndPassword(auth, email, form.get("password"));
       }
@@ -1102,19 +1102,13 @@ async function loadDashboard(user) {
     }
     const isNewAccount = sessionStorage.getItem("nw_new_account") === "1";
     if (isNewAccount) sessionStorage.removeItem("nw_new_account");
-    // Show wizard for:
-    //  - explicit new-account flag (talent.nearwork.co signup)
-    //  - accounts created via jobs.nearwork.co that have no targetRole or onboarded flag yet
-    // Skip wizard for existing candidates who already have a complete profile (they
-    // just lack the onboarded flag) — silently mark them as onboarded instead.
     const hasTargetRole = Boolean(candidate?.targetRole || (!isPlaceholderRole(candidate?.headline) && candidate?.headline));
-    const needsWizard = !candidate?.onboarded && !hasTargetRole;
-    const hasProfile  = !candidate?.onboarded && hasTargetRole;
-    if (hasProfile) {
-      // Existing candidate missing the flag — backfill it silently
+    const hasExistingData = Boolean(candidate?.cvUrl || candidate?.applications?.length || (candidate?.skills?.length >= 3));
+    const skipWizard = candidate?.onboarded || hasTargetRole || hasExistingData;
+    if (!candidate?.onboarded && skipWizard) {
       updateCandidateProfile(user.uid, { onboarded: true, candidateCode: candidate?.candidateCode }).catch(() => null);
     }
-    const activePage = (isNewAccount || needsWizard) ? "onboarding" : pageFromPath();
+    const activePage = (isNewAccount && !skipWizard) ? "onboarding" : skipWizard ? pageFromPath() : "onboarding";
     setState({
       candidate: {
         ...(candidate || {}),
