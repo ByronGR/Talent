@@ -4355,7 +4355,7 @@ if (hasFirebaseConfig) {
   }, 2500);
   if (_pendingCt) {
     signInWithHandoffToken(_pendingCt)
-      .then(() => { _ctPending = false; })
+      .then((cred) => { _ctPending = false; loadDashboard(cred.user); })
       .catch(() => { _ctPending = false; loadPublicPage(); });
   }
 } else {
