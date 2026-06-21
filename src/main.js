@@ -3369,6 +3369,23 @@ function emptyState(title, body) {
   return `<div class="empty-state">${icon("inbox")}<strong>${title}</strong><p>${body}</p></div>`;
 }
 
+function showApplySuccess(job) {
+  const title = job?.title || job?.role || "this role";
+  const overlay = document.createElement("div");
+  overlay.className = "nw-modal-overlay";
+  overlay.innerHTML = `
+    <div class="nw-modal" style="text-align:center;padding:32px 28px;">
+      <div style="font-size:48px;margin-bottom:12px;">🎉</div>
+      <h3 style="font-size:18px;margin-bottom:10px;">Application submitted!</h3>
+      <p style="margin-bottom:6px;">You've applied to <strong>${escapeHtml(title)}</strong>. Our team will review your profile and reach out with next steps shortly.</p>
+      <p style="font-size:12px;color:var(--light);margin-bottom:20px;">You can track your application status in the Applications tab.</p>
+      <button type="button" class="pf-btn-primary" id="dismissApplySuccess" style="padding:11px 28px;border-radius:99px;font-size:14px;">Got it</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay || e.target.id === "dismissApplySuccess") overlay.remove(); });
+  document.getElementById("dismissApplySuccess").focus();
+}
+
 function renderLoading() {
   app.innerHTML = `<main class="loading-screen"><span class="logo-mark">N</span><p>Loading Talent...</p></main>`;
 }
@@ -3578,17 +3595,17 @@ function bindDashboardEvents() {
       const job = state.jobs.map(normalizeRole).find((item) => item.code === button.dataset.apply);
       const code = button.dataset.apply;
       button.disabled = true;
-      button.textContent = "Submitted";
+      button.textContent = "Submitting...";
       if (state.user && hasFirebaseConfig) {
-        // Persist to localStorage immediately so refresh still shows Applied state
         try {
           const _set = getLocalAppliedSet();
           _set.add(code);
           localStorage.setItem("nw_talent_applied", JSON.stringify([..._set]));
         } catch (_e) {}
         await applyToJob(state.user.uid, job);
-        await loadDashboard(state.user);
-        setActivePage("applications");
+        button.textContent = `${icon("check")} Applied`;
+        button.classList.add("applied");
+        showApplySuccess(job);
       } else {
         setState({ message: "Sign in to apply to this opening." });
       }
