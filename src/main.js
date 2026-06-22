@@ -1122,8 +1122,8 @@ async function loadDashboard(user) {
     const fromJobs = new URLSearchParams(window.location.search).get("from") === "jobs";
     const hasExistingData = Boolean(candidate?.cvUrl || candidate?.applications?.length || (candidate?.skills?.length >= 3));
     const skipWizard = candidate?.onboarded || hasTargetRole || hasExistingData || fromJobs;
-    if (!candidate?.onboarded && skipWizard) {
-      updateCandidateProfile(user.uid, { onboarded: true, candidateCode: candidate?.candidateCode }).catch(() => null);
+    if (!candidate?.onboarded && skipWizard && candidate?.candidateCode) {
+      updateCandidateProfile(user.uid, { onboarded: true, candidateCode: candidate.candidateCode }).catch(() => null);
     }
     const activePage = (isNewAccount && !skipWizard) ? "onboarding" : skipWizard ? pageFromPath() : "onboarding";
     setState({
