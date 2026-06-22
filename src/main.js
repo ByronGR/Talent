@@ -1099,7 +1099,10 @@ async function loadDashboard(user) {
       listCandidateApplications(user.uid),
       listOpenJobs()
     ]);
-    const candidate = candidateResult.status === "fulfilled" ? candidateResult.value : null;
+    let candidate = candidateResult.status === "fulfilled" ? candidateResult.value : null;
+    if (!candidate && candidateResult.status === "rejected") {
+      console.error("[NW] profile load failed:", candidateResult.reason?.message);
+    }
     const applications = applicationsResult.status === "fulfilled" ? applicationsResult.value : [];
     const jobs = jobsResult.status === "fulfilled" ? jobsResult.value : [];
     let assessments = [];
@@ -1314,6 +1317,15 @@ function renderDashboard() {
           ${icon(state.user ? "log-out" : "log-in")} ${state.user ? "Sign out" : "Sign in"}
         </button>
       </aside>
+
+      <!-- ── Mobile bottom nav ── -->
+      <nav class="nw-mobile-nav">
+        <button class="nw-mob-tab${state.activePage === "overview" ? " active" : ""}" data-page="overview" type="button">${icon("layout-dashboard")}<span>Home</span></button>
+        <button class="nw-mob-tab${state.activePage === "applications" ? " active" : ""}" data-page="applications" type="button">${icon("send")}<span>Applied</span></button>
+        <button class="nw-mob-tab${state.activePage === "matches" ? " active" : ""}" data-page="matches" type="button">${icon("briefcase-business")}<span>Jobs</span></button>
+        <button class="nw-mob-tab${state.activePage === "profile" ? " active" : ""}" data-page="profile" type="button">${icon("user-round-cog")}<span>Profile</span></button>
+        <button id="mobileSignOut" class="nw-mob-tab" type="button">${icon("log-out")}<span>Out</span></button>
+      </nav>
 
       <!-- ── Main workspace ── -->
       <section class="nw-workspace">
@@ -3428,6 +3440,16 @@ async function openWithHandoff(url) {
 
 function bindDashboardEvents() {
   document.querySelector("#signOut")?.addEventListener("click", async () => {
+    await signOut(auth);
+    if (notificationUnsubscribe) notificationUnsubscribe();
+    notificationUnsubscribe = null;
+    _onbInitialized = false;
+    _profileFormDirty = false;
+    _pendingNavTarget = null;
+    window.history.pushState({ page: "overview" }, "", "/");
+    setState({ user: null, candidate: null, applications: [], assessments: [], jobs: [], view: "login", activePage: "overview", message: "" });
+  });
+  document.querySelector("#mobileSignOut")?.addEventListener("click", async () => {
     await signOut(auth);
     if (notificationUnsubscribe) notificationUnsubscribe();
     notificationUnsubscribe = null;
