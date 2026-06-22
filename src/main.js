@@ -1100,8 +1100,12 @@ async function loadDashboard(user) {
       listOpenJobs()
     ]);
     let candidate = candidateResult.status === "fulfilled" ? candidateResult.value : null;
-    if (!candidate && candidateResult.status === "rejected") {
-      console.error("[NW] profile load failed:", candidateResult.reason?.message);
+    if (!candidate) {
+      const reason = candidateResult.status === "rejected" ? candidateResult.reason?.message : "document not found";
+      console.error("[NW] profile load:", reason, "uid:", user.uid, "email:", user.email);
+      if (new URLSearchParams(window.location.search).get("debug") === "1") {
+        alert("Profile debug — uid: " + user.uid + "\nStatus: " + candidateResult.status + "\nReason: " + reason);
+      }
     }
     const applications = applicationsResult.status === "fulfilled" ? applicationsResult.value : [];
     const jobs = jobsResult.status === "fulfilled" ? jobsResult.value : [];
