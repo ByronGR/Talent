@@ -4523,6 +4523,8 @@ textarea:focus {
 
 @media (max-width: 780px) {
   .nw-sidebar { display: none; }
+
+  /* ── Bottom tab bar ── */
   .nw-mobile-nav {
     display: flex;
     position: fixed;
@@ -4534,6 +4536,7 @@ textarea:focus {
     border-top: 1px solid #EBEDF0;
     padding: 6px 0 max(6px, env(safe-area-inset-bottom));
     justify-content: space-around;
+    box-shadow: 0 -2px 12px rgba(0,0,0,0.06);
   }
   .nw-mob-tab {
     display: flex;
@@ -4543,24 +4546,71 @@ textarea:focus {
     background: none;
     border: none;
     cursor: pointer;
-    padding: 6px 10px;
+    padding: 8px 6px;
     font-family: inherit;
     font-size: 10px;
     color: #9AA0A6;
     min-width: 52px;
+    -webkit-tap-highlight-color: transparent;
   }
-  .nw-mob-tab svg { width: 20px; height: 20px; }
+  .nw-mob-tab svg { width: 22px; height: 22px; }
   .nw-mob-tab.active { color: #10A07C; font-weight: 600; }
   .nw-mob-tab:active { opacity: .7; }
-  .nw-stat-grid  { grid-template-columns: repeat(2, 1fr); }
+
+  /* ── Top bar: hide search, compact ── */
+  .nw-topbar { padding: 10px 16px; height: 52px; gap: 12px; }
+  .nw-topbar-search { display: none; }
+  .nw-avail-pill { padding: 6px 10px 6px 8px; }
+  .nw-avail-label { font-size: 11.5px; }
+  .nw-bell-btn { width: 36px; height: 36px; }
+
+  /* ── Content area — room for bottom nav ── */
+  .nw-page-content { padding: 18px 16px 90px; }
+  .nw-workspace { overflow-y: auto; height: 100vh; }
+
+  /* ── Grids collapse ── */
+  .nw-stat-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .nw-match-grid { grid-template-columns: 1fr; }
+  .nw-split { grid-template-columns: 1fr; }
   .nw-readiness-card { grid-template-columns: 1fr; }
   .nw-readiness-donut { width: 90px; height: 90px; min-width: 90px; margin: 0 auto; }
-  .nw-page-content { padding: 20px 18px 80px; }
-  .nw-topbar { padding: 14px 18px; }
   .pipeline { grid-template-columns: repeat(2, 1fr); }
   .nw-app-row { grid-template-columns: 36px 1fr; }
   .nw-app-meta { display: none; }
+
+  /* ── Typography ── */
+  .nw-overview-greeting { font-size: 1.3rem; line-height: 1.3; }
+  .nw-page-heading { font-size: 1.15rem; }
+  .nw-page-lede { font-size: 13px; }
+
+  /* ── Cards ── */
+  .nw-match-card { min-width: 0; }
+  .nw-match-role { font-size: 14px; }
+  .nw-stat-tile { padding: 14px; }
+  .nw-stat-value { font-size: 1.6rem; }
+  .section-block, .pf-card, .nw-match-card { border-radius: 14px; }
+  .nw-partner-card { padding: 16px; }
+
+  /* ── Touch-friendly inputs + buttons ── */
+  .pf-input, .pf-select, .pf-textarea { min-height: 48px; font-size: 16px; }
+  .pf-btn-primary, .pf-btn-secondary, .pf-add-btn, .pf-danger-btn { min-height: 44px; font-size: 14px; }
+  .pf-tab { padding: 10px 12px; font-size: 12px; min-height: 44px; }
+  .pf-card { padding: 16px; }
+
+  /* ── Login page ── */
+  .nw-signin-side { padding: 24px 20px; }
+  .nw-signin-card { padding: 0; }
+  .nw-field-input { min-height: 48px; font-size: 16px; }
+  .nw-signin-heading { font-size: 1.3rem; }
+}
+
+/* Extra small phones */
+@media (max-width: 400px) {
+  .nw-stat-grid { grid-template-columns: 1fr; }
+  .nw-mob-tab { min-width: 44px; padding: 8px 4px; font-size: 9px; }
+  .nw-mob-tab svg { width: 20px; height: 20px; }
+  .pipeline { grid-template-columns: 1fr; }
+  .nw-overview-greeting { font-size: 1.15rem; }
 }
 
 /* ============================================================
