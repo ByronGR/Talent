@@ -904,6 +904,19 @@ function renderLogin(mode = "login") {
   `;
   syncIcons();
 
+  const _urlEmail = new URLSearchParams(window.location.search).get("email");
+  if (_urlEmail) {
+    const emailField = document.querySelector("#emailInput");
+    if (emailField) { emailField.value = _urlEmail; emailField.dispatchEvent(new Event("input")); }
+    const pwField = document.querySelector("#passwordInput");
+    if (pwField) pwField.focus();
+  }
+  const _fromJobs = new URLSearchParams(window.location.search).get("from") === "jobs";
+  if (_fromJobs && state.message !== "Welcome from Jobs — log in to view your dashboard.") {
+    const msg = document.querySelector("#formMessage");
+    if (msg) { msg.textContent = "Welcome from Jobs — log in to view your dashboard."; msg.classList.add("success"); }
+  }
+
   document.querySelector("#toggleMode").addEventListener("click", () => renderLogin(isSignup ? "login" : "signup"));
   document.querySelectorAll("[data-password-toggle]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -1103,8 +1116,9 @@ async function loadDashboard(user) {
     const isNewAccount = sessionStorage.getItem("nw_new_account") === "1";
     if (isNewAccount) sessionStorage.removeItem("nw_new_account");
     const hasTargetRole = Boolean(candidate?.targetRole || (!isPlaceholderRole(candidate?.headline) && candidate?.headline));
+    const fromJobs = new URLSearchParams(window.location.search).get("from") === "jobs";
     const hasExistingData = Boolean(candidate?.cvUrl || candidate?.applications?.length || (candidate?.skills?.length >= 3));
-    const skipWizard = candidate?.onboarded || hasTargetRole || hasExistingData;
+    const skipWizard = candidate?.onboarded || hasTargetRole || hasExistingData || fromJobs;
     if (!candidate?.onboarded && skipWizard) {
       updateCandidateProfile(user.uid, { onboarded: true, candidateCode: candidate?.candidateCode }).catch(() => null);
     }
