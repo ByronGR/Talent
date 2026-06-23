@@ -1146,6 +1146,23 @@ async function loadDashboard(user) {
       activePage,
       message: ""
     });
+    fetch('/api/intercom-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user.uid, email: user.email })
+    }).then(r => r.ok ? r.json() : null).then(data => {
+      if (data?.token && window.Intercom) {
+        window.Intercom('boot', {
+          api_base: 'https://api-iam.intercom.io',
+          app_id: 'pelltlav',
+          intercom_user_jwt: data.token,
+          user_id: user.uid,
+          name: candidate?.name || user.displayName || '',
+          email: user.email,
+          session_duration: 86400000
+        });
+      }
+    }).catch(() => {});
     if (notificationUnsubscribe) notificationUnsubscribe();
     if (hasFirebaseConfig) {
       notificationUnsubscribe = subscribeToNotifications(user.uid, (notifications) => {
