@@ -183,10 +183,7 @@ async function upsertCandidate(uid, data) {
   await setDoc(doc(db, collections.users, uid), payload, { merge: true });
   // Mirror to ATS candidates collection so every account appears in Admin immediately
   await setDoc(doc(db, collections.candidates, candidateCode), await mergeAtsCandidate(uid, candidateCode, { ...payload, candidateCode }), { merge: true }).catch(() => null);
-  // Only sync to HubSpot if the candidate gave marketing consent
-  if (data.marketingConsent === true) {
-    syncCandidateToHubSpot({ ...payload, candidateCode, source: "talent.nearwork.co" }).catch(() => null);
-  }
+  syncCandidateToHubSpot({ ...payload, candidateCode, source: "talent.nearwork.co" }).catch(() => null);
 }
 
 function candidateCodeForUid(uid) {
@@ -514,9 +511,7 @@ async function updateCandidateProfile(uid, data) {
       ...data,
       candidateCode
     }), { merge: true });
-    if (data.marketingConsent === true) {
-      syncCandidateToHubSpot({ ...data, candidateCode, source: "talent.nearwork.co" }).catch(() => null);
-    }
+    syncCandidateToHubSpot({ ...data, candidateCode, source: "talent.nearwork.co" }).catch(() => null);
     return { candidateCode, atsSynced: true };
   } catch (error) {
     console.warn("Candidate ATS sync failed.", error);
