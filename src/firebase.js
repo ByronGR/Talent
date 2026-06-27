@@ -183,9 +183,6 @@ async function upsertCandidate(uid, data) {
   await setDoc(doc(db, collections.users, uid), payload, { merge: true });
   // Mirror to ATS candidates collection so every account appears in Admin immediately
   await setDoc(doc(db, collections.candidates, candidateCode), await mergeAtsCandidate(uid, candidateCode, { ...payload, candidateCode }), { merge: true }).catch(() => null);
-  if (data.marketingConsent === true) {
-    syncCandidateToHubSpot({ ...payload, candidateCode, source: "talent.nearwork.co" }).catch(() => null);
-  }
 }
 
 function candidateCodeForUid(uid) {
@@ -513,9 +510,6 @@ async function updateCandidateProfile(uid, data) {
       ...data,
       candidateCode
     }), { merge: true });
-    if (data.marketingConsent === true) {
-      syncCandidateToHubSpot({ ...data, candidateCode, source: "talent.nearwork.co" }).catch(() => null);
-    }
     return { candidateCode, atsSynced: true };
   } catch (error) {
     console.warn("Candidate ATS sync failed.", error);
@@ -549,21 +543,6 @@ async function requestPasswordReset(email) {
     throw new Error(data.error || "Failed to send the reset email.");
   }
   return data;
-}
-
-async function syncCandidateToHubSpot(candidate) {
-  const email = candidate?.email || auth.currentUser?.email || "";
-  if (!email) return { ok: false, skipped: true };
-  const idToken = await auth.currentUser?.getIdToken().catch(() => '');
-  const response = await fetch("/api/sync-hubspot-candidate", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
-    },
-    body: JSON.stringify({ candidate: { ...candidate, email } })
-  });
-  return response.json().catch(() => ({ ok: false }));
 }
 
 async function uploadCandidatePhoto(uid, file) {
