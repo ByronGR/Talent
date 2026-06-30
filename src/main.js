@@ -494,10 +494,12 @@ function candidateHasPipeline() {
 }
 
 function selectedLocation() {
+  const country = state.candidate?.locationCountry || state.candidate?.country || "Colombia";
   const department = state.candidate?.department || "Bogotá D.C.";
   const cities = colombiaLocations[department] || colombiaLocations["Bogotá D.C."] || ["Bogotá"];
   const city = state.candidate?.city || state.candidate?.locationCity || cities[0];
-  return { department, city, label: `${city}, ${department}` };
+  const label = country === "Colombia" ? `${city}, ${department}` : country;
+  return { country, department, city, label };
 }
 
 function roleOptions() {
@@ -3048,6 +3050,7 @@ function certEntryHtml(index, entry = {}) {
 function renderProfileForm(mode = "profile") {
   const skills = candidateSkills();
   const location = selectedLocation();
+  const isCo = location.country === "Colombia";
   const cities = colombiaLocations[location.department] || [];
   const salaryCurrency = state.candidate?.salaryCurrency || "USD";
   const normalizedSalary = normalizeSalaryValue(state.candidate?.salaryAmount || state.candidate?.salary || state.candidate?.salaryUSD, salaryCurrency);
@@ -3138,7 +3141,13 @@ function renderProfileForm(mode = "profile") {
           <!-- ── Location ── -->
           <div class="pf-card">
             ${pfCardHead("map-pin", "Location")}
-            <div class="pf-field-row">
+            <label class="pf-field" style="margin-bottom:14px;">
+              ${pfLabel("Country")}
+              <select class="pf-input" name="country" id="countrySelect">
+                ${COUNTRIES.map((co) => `<option value="${escapeAttr(co)}" ${co === location.country ? "selected" : ""}>${escapeHtml(co)}</option>`).join("")}
+              </select>
+            </label>
+            <div class="pf-field-row" id="pfCoLoc" style="display:${isCo ? "" : "none"};">
               <label class="pf-field">
                 ${pfLabel("Department")}
                 <select class="pf-input" name="department" id="departmentSelect">
@@ -3152,6 +3161,7 @@ function renderProfileForm(mode = "profile") {
                 </select>
               </label>
             </div>
+            <p id="pfCoHint" style="display:${isCo ? "none" : "block"};font-size:12.5px;color:var(--mid);margin:0;line-height:1.5;">No state or city needed — country is enough.</p>
           </div>
 
           <!-- ── Compensation ── -->
@@ -3660,6 +3670,14 @@ function bindDashboardEvents() {
     const cities = colombiaLocations[event.target.value] || [];
     citySelect.innerHTML = cities.map((city) => `<option value="${escapeAttr(city)}">${city}</option>`).join("");
   });
+  // Colombia keeps department + city; any other country needs only the country.
+  document.querySelector("#countrySelect")?.addEventListener("change", (event) => {
+    const isCo = event.target.value === "Colombia";
+    const coLoc = document.querySelector("#pfCoLoc");
+    const coHint = document.querySelector("#pfCoHint");
+    if (coLoc) coLoc.style.display = isCo ? "" : "none";
+    if (coHint) coHint.style.display = isCo ? "none" : "block";
+  });
   document.querySelector("#roleGroupSelect")?.addEventListener("change", (event) => {
     const targetRoleSelect = document.querySelector("#targetRoleSelect");
     targetRoleSelect.innerHTML = roleOptionsForGroup(event.target.value, "");
@@ -3861,8 +3879,11 @@ function bindDashboardEvents() {
   document.querySelector("#profileForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const department = form.get("department");
-    const city = form.get("city");
+    const country = form.get("country") || "Colombia";
+    const isCo = country === "Colombia";
+    const department = isCo ? form.get("department") : "";
+    const city = isCo ? form.get("city") : "";
+    const countrySlug = String(country).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     const salary = normalizeSalaryValue(form.get("salary"), form.get("salaryCurrency"));
     const marketingConsent = form.get("marketingConsent") === "on";
     const data = {
@@ -3871,11 +3892,13 @@ function bindDashboardEvents() {
       headline: form.get("targetRole"),
       department,
       city,
-      locationId: `${String(city).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-")}-co`,
-      location: `${city}, ${department}`,
+      locationId: isCo
+        ? `${String(city).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-")}-co`
+        : countrySlug,
+      location: isCo ? `${city}, ${department}` : country,
       locationCity: city,
       locationDepartment: department,
-      locationCountry: "Colombia",
+      locationCountry: country,
       english: form.get("english"),
       salary: salary.salary,
       salaryUSD: salary.salaryUSD,
