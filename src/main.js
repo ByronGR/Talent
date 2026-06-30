@@ -171,6 +171,23 @@ const extendedSkillCatalog = [
 const ALL_SKILLS = [...new Set([...Object.values(skillGroups).flat(), ...extendedSkillCatalog])]
   .sort((a, b) => a.localeCompare(b));
 
+// Country list for onboarding. Colombia is pinned to the top (the default and
+// the only country that captures department + city); the rest are alphabetical.
+const COUNTRIES = ["Colombia",
+  "Afghanistan","Albania","Algeria","Andorra","Angola","Antigua and Barbuda","Argentina","Armenia","Australia","Austria","Azerbaijan",
+  "Bahamas","Bahrain","Bangladesh","Barbados","Belarus","Belgium","Belize","Benin","Bhutan","Bolivia","Bosnia and Herzegovina","Botswana","Brazil","Brunei","Bulgaria","Burkina Faso","Burundi",
+  "Cambodia","Cameroon","Canada","Cape Verde","Central African Republic","Chad","Chile","China","Comoros","Congo (Brazzaville)","Congo (Kinshasa)","Costa Rica","Côte d'Ivoire","Croatia","Cuba","Cyprus","Czechia",
+  "Denmark","Djibouti","Dominica","Dominican Republic","Ecuador","Egypt","El Salvador","Equatorial Guinea","Eritrea","Estonia","Eswatini","Ethiopia",
+  "Fiji","Finland","France","Gabon","Gambia","Georgia","Germany","Ghana","Greece","Grenada","Guatemala","Guinea","Guinea-Bissau","Guyana",
+  "Haiti","Honduras","Hungary","Iceland","India","Indonesia","Iran","Iraq","Ireland","Israel","Italy","Jamaica","Japan","Jordan",
+  "Kazakhstan","Kenya","Kiribati","Kosovo","Kuwait","Kyrgyzstan","Laos","Latvia","Lebanon","Lesotho","Liberia","Libya","Liechtenstein","Lithuania","Luxembourg",
+  "Madagascar","Malawi","Malaysia","Maldives","Mali","Malta","Marshall Islands","Mauritania","Mauritius","Mexico","Micronesia","Moldova","Monaco","Mongolia","Montenegro","Morocco","Mozambique","Myanmar",
+  "Namibia","Nauru","Nepal","Netherlands","New Zealand","Nicaragua","Niger","Nigeria","North Korea","North Macedonia","Norway","Oman",
+  "Pakistan","Palau","Palestine","Panama","Papua New Guinea","Paraguay","Peru","Philippines","Poland","Portugal","Qatar",
+  "Romania","Russia","Rwanda","Saint Kitts and Nevis","Saint Lucia","Saint Vincent and the Grenadines","Samoa","San Marino","Sao Tome and Principe","Saudi Arabia","Senegal","Serbia","Seychelles","Sierra Leone","Singapore","Slovakia","Slovenia","Solomon Islands","Somalia","South Africa","South Korea","South Sudan","Spain","Sri Lanka","Sudan","Suriname","Sweden","Switzerland","Syria",
+  "Taiwan","Tajikistan","Tanzania","Thailand","Timor-Leste","Togo","Tonga","Trinidad and Tobago","Tunisia","Turkey","Turkmenistan","Tuvalu",
+  "Uganda","Ukraine","United Arab Emirates","United Kingdom","United States","Uruguay","Uzbekistan","Vanuatu","Vatican City","Venezuela","Vietnam","Yemen","Zambia","Zimbabwe"];
+
 const colombiaLocations = {
   "Amazonas": ["El Encanto", "La Chorrera", "La Pedrera", "La Victoria", "Leticia", "Miriti - Paraná", "Puerto Alegría", "Puerto Arica", "Puerto Nariño", "Puerto Santander", "Tarapacá"],
   "Antioquia": ["Abejorral", "Abriaquí", "Alejandría", "Amagá", "Amalfi", "Andes", "Angelópolis", "Angostura", "Anorí", "Anza", "Apartadó", "Arboletes", "Argelia", "Armenia", "Barbosa", "Bello", "Belmira", "Betania", "Betulia", "Briceño", "Buriticá", "Cáceres", "Caicedo", "Caldas", "Campamento", "Cañasgordas", "Caracolí", "Caramanta", "Carepa", "Carmen de Viboral", "Carolina", "Caucasia", "Chigorodó", "Cisneros", "Ciudad Bolívar", "Cocorná", "Concepción", "Concordia", "Copacabana", "Dabeiba", "Don Matías", "Ebéjico", "El Bagre", "Entrerríos", "Envigado", "Fredonia", "Frontino", "Giraldo", "Girardota", "Gómez Plata", "Granada", "Guadalupe", "Guarne", "Guatapé", "Heliconia", "Hispania", "Itagüí", "Ituango", "Jardín", "Jericó", "La Ceja", "La Estrella", "La Pintada", "La Unión", "Liborina", "Maceo", "Marinilla", "Medellín", "Montebello", "Murindó", "Mutata", "Nariño", "Nechí", "Necoclí", "Olaya", "Peñol", "Peque", "Pueblorrico", "Puerto Berrío", "Puerto Nare", "Puerto Triunfo", "Remedios", "Retiro", "Rionegro", "Sabanalarga", "Sabaneta", "Salgar", "San Andrés", "San Carlos", "San Francisco", "San Jerónimo", "San José de la Montaña", "San Juan de Urabá", "San Luis", "San Pedro", "San Pedro de Urabá", "San Rafael", "San Roque", "San Vicente", "Santa Bárbara", "Santa Rosa de Osos", "Santafé de Antioquia", "Santo Domingo", "Santuario", "Segovia", "Sonsón", "Sopetrán", "Támesis", "Tarazá", "Tarso", "Titiribí", "Toledo", "Turbo", "Uramita", "Urrao", "Valdivia", "Valparaíso", "Vegachí", "Venecia", "Vigía del Fuerte", "Yalí", "Yarumal", "Yolombó", "Yondó", "Zaragoza"],
@@ -1741,6 +1758,7 @@ function renderOnboarding() {
     _onbData = {
       roleGroup:  c.roleGroup  || "",
       targetRole: c.targetRole || "",
+      country:    c.locationCountry || c.country || "Colombia",
       department: c.department || c.locationDepartment || "",
       city:       c.city       || c.locationCity       || "",
       english:    c.english    || "",
@@ -1866,6 +1884,8 @@ function _onbStepHtml(step) {
     // ── Step 3: Role + Location ────────────────────────────────────────────────
     case 3: {
       const rg = d.roleGroup || Object.keys(roleGroups)[0] || "";
+      const country = d.country || "Colombia";
+      const isCo = country === "Colombia";
       const dept  = d.department || Object.keys(colombiaLocations)[0] || "";
       const cities = colombiaLocations[dept] || [];
       return `
@@ -1877,8 +1897,12 @@ function _onbStepHtml(step) {
           <div style="display:grid;gap:12px;margin-bottom:4px;">
             ${_onbField("Area", false, `<select id="onbRoleGroup" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${roleGroupOptions(rg)}</select>`)}
             ${_onbField("Role", false, `<select id="onbTargetRole" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${roleOptionsForGroup(rg, d.targetRole || "")}</select>`)}
-            ${_onbField("Department", false, `<select id="onbDept" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${Object.keys(colombiaLocations).map((dep) => `<option value="${escapeAttr(dep)}" ${dep === dept ? "selected" : ""}>${escapeHtml(dep)}</option>`).join("")}</select>`)}
-            ${_onbField("City", false, `<select id="onbCity" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${cities.map((c) => `<option value="${escapeAttr(c)}" ${c === d.city ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select>`)}
+            ${_onbField("Country", false, `<select id="onbCountry" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${COUNTRIES.map((co) => `<option value="${escapeAttr(co)}" ${co === country ? "selected" : ""}>${escapeHtml(co)}</option>`).join("")}</select>`)}
+            <div id="onbCoLoc" style="display:${isCo ? "grid" : "none"};gap:12px;">
+              ${_onbField("Department", false, `<select id="onbDept" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${Object.keys(colombiaLocations).map((dep) => `<option value="${escapeAttr(dep)}" ${dep === dept ? "selected" : ""}>${escapeHtml(dep)}</option>`).join("")}</select>`)}
+              ${_onbField("City", false, `<select id="onbCity" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${cities.map((c) => `<option value="${escapeAttr(c)}" ${c === d.city ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select>`)}
+            </div>
+            <p id="onbCoHint" style="display:${isCo ? "none" : "block"};font-size:12.5px;color:var(--mid);margin:0;line-height:1.5;">No state or city needed — country is enough to continue.</p>
             ${_onbField("English level", false, `<select id="onbEnglish" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${["", "B1", "B2", "C1", "C2", "Native"].map((l) => `<option value="${l}" ${l === d.english ? "selected" : ""}>${l || "Select level"}</option>`).join("")}</select>`)}
           </div>
           ${_onbActions(2, "Review →")}
@@ -1919,7 +1943,9 @@ function _onbReviewHtml() {
 
   const name     = [d.firstName, d.lastName].filter(Boolean).join(" ") || state.candidate?.name || "—";
   const role     = d.targetRole || "—";
-  const location = [d.city, d.department].filter(Boolean).join(", ") || "—";
+  const location = (d.country && d.country !== "Colombia")
+    ? d.country
+    : ([d.city, d.department].filter(Boolean).join(", ") || "—");
   const salaryParts = [];
   if (d.expectedSalaryUSD) salaryParts.push(`$${Number(d.expectedSalaryUSD).toLocaleString("en-US")} USD/mo`);
   if (d.expectedSalaryCOP) salaryParts.push(`$${Number(d.expectedSalaryCOP).toLocaleString("es-CO")} COP/mo`);
@@ -2142,10 +2168,19 @@ function _onbBindStep(step) {
     case 3: {
       const rgSel   = document.querySelector("#onbRoleGroup");
       const roleSel = document.querySelector("#onbTargetRole");
+      const countrySel = document.querySelector("#onbCountry");
       const deptSel = document.querySelector("#onbDept");
       const citySel = document.querySelector("#onbCity");
+      const coLoc   = document.querySelector("#onbCoLoc");
+      const coHint  = document.querySelector("#onbCoHint");
       rgSel?.addEventListener("change", () => {
         roleSel.innerHTML = roleOptionsForGroup(rgSel.value, "");
+      });
+      // Colombia keeps department + city; any other country needs only the country.
+      countrySel?.addEventListener("change", () => {
+        const isCo = countrySel.value === "Colombia";
+        if (coLoc)  coLoc.style.display  = isCo ? "grid" : "none";
+        if (coHint) coHint.style.display = isCo ? "none" : "block";
       });
       deptSel?.addEventListener("change", () => {
         const cities = colombiaLocations[deptSel.value] || [];
@@ -2154,8 +2189,10 @@ function _onbBindStep(step) {
       next?.addEventListener("click", () => {
         _onbData.roleGroup  = rgSel?.value  || "";
         _onbData.targetRole = roleSel?.value || "";
-        _onbData.department = deptSel?.value || "";
-        _onbData.city       = citySel?.value || "";
+        _onbData.country    = countrySel?.value || "Colombia";
+        const isCo = _onbData.country === "Colombia";
+        _onbData.department = isCo ? (deptSel?.value || "") : "";
+        _onbData.city       = isCo ? (citySel?.value || "") : "";
         _onbData.english    = document.querySelector("#onbEnglish")?.value || "";
         _onbAwaitParse(4);
       });
@@ -2216,8 +2253,11 @@ async function _onbFinish() {
     const uid = state.user?.uid;
     if (!uid) throw new Error("Not signed in");
 
-    const dept = d.department || "";
-    const city = d.city || "";
+    const country = d.country || "Colombia";
+    const isCo = country === "Colombia";
+    const dept = isCo ? (d.department || "") : "";
+    const city = isCo ? (d.city || "") : "";
+    const countrySlug = String(country).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     const usdVal = Number(d.expectedSalaryUSD || 0) || null;
     const copVal = Number(d.expectedSalaryCOP || 0) || null;
     const primaryAmount   = usdVal || copVal || null;
@@ -2244,11 +2284,13 @@ async function _onbFinish() {
       currentRole:           d.currentRole || "",
       department:            dept,
       city,
-      location:              [city, dept].filter(Boolean).join(", "),
+      location:              isCo ? [city, dept].filter(Boolean).join(", ") : country,
       locationCity:          city,
       locationDepartment:    dept,
-      locationCountry:       "Colombia",
-      locationId:            `${String(city).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-")}-co`,
+      locationCountry:       country,
+      locationId:            isCo
+        ? `${String(city).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-")}-co`
+        : countrySlug,
       english:               d.english || "",
       salary:                salaryLabel,
       salaryUSD:             usdVal,
