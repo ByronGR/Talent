@@ -594,6 +594,24 @@ function formatSalaryInputValue(value, currency = "USD") {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.round(amount));
 }
 
+// Live thousands-separators for salary inputs (referenced from inline oninput).
+if (typeof window !== "undefined") {
+  window.__fmtSalary = function (el) {
+    const digits = String(el.value || "").replace(/[^\d]/g, "");
+    el.value = digits ? Number(digits).toLocaleString("en-US") : "";
+  };
+}
+
+// Fix ALL-CAPS names → Title case ("SEBASTIAN" → "Sebastian"); leaves already
+// mixed-case words like "McDonald" / "José" alone.
+function properName(str) {
+  return String(str || "").replace(/\S+/g, (w) =>
+    /[A-Za-zÀ-ÿ]/.test(w) && w === w.toUpperCase()
+      ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+      : w
+  );
+}
+
 function normalizeList(value) {
   if (Array.isArray(value)) return value;
   return String(value || "")
@@ -984,11 +1002,12 @@ function renderLogin(mode = "login") {
     const consentAt = new Date().toISOString();
     try {
       if (isSignup) {
+        const cleanName = properName(String(form.get("name") || "").trim());
         const credential = await createUserWithEmailAndPassword(auth, email, form.get("password"));
-        await updateProfile(credential.user, { displayName: form.get("name") });
+        await updateProfile(credential.user, { displayName: cleanName });
         sessionStorage.setItem("nw_new_account", "1");
         await upsertCandidate(credential.user.uid, {
-          name: form.get("name"),
+          name: cleanName,
           email,
           availability: "open",
           headline: "Nearwork candidate",
@@ -1000,8 +1019,8 @@ function renderLogin(mode = "login") {
           marketingConsentAt: marketingConsent ? consentAt : null
         });
         await sendCandidateAccountCreatedEmail({
-          name: form.get("name"),
-          firstName: String(form.get("name") || "").trim().split(/\s+/)[0],
+          name: cleanName,
+          firstName: cleanName.split(/\s+/)[0],
           email
         }).catch((e) => console.error("[NW] account email failed:", e?.message));
       } else {
@@ -1874,8 +1893,8 @@ function _onbStepHtml(step) {
           </div>
           ${_onbField("Current role", false, _onbInput("onbCurrentRole", "text", currentRole, "e.g. Customer Success Manager"))}
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:4px;">
-            ${_onbField("Expected salary — USD", true, _onbInput("onbSalaryUSD", "number", d.expectedSalaryUSD || "", "2500", 'min="0" step="100"'))}
-            ${_onbField("Expected salary — COP", true, _onbInput("onbSalaryCOP", "number", d.expectedSalaryCOP || "", "10000000", 'min="0" step="100000"'))}
+            ${_onbField("Expected salary — USD", true, _onbInput("onbSalaryUSD", "text", formatSalaryInputValue(d.expectedSalaryUSD), "2,500", 'inputmode="numeric" oninput="window.__fmtSalary(this)"'))}
+            ${_onbField("Expected salary — COP", true, _onbInput("onbSalaryCOP", "text", formatSalaryInputValue(d.expectedSalaryCOP), "10,000,000", 'inputmode="numeric" oninput="window.__fmtSalary(this)"'))}
           </div>
           ${_onbField("LinkedIn", true, _onbInput("onbLinkedin", "url", d.linkedin || "", "https://linkedin.com/in/..."))}
           <p id="onbBasicError" style="font-size:12px;color:#e74c3c;min-height:16px;margin:4px 0 0;"></p>
@@ -2155,12 +2174,12 @@ function _onbBindStep(step) {
           if (errEl) errEl.textContent = "Please enter an expected salary in USD, COP, or both.";
           return;
         }
-        _onbData.firstName         = firstName;
-        _onbData.lastName          = lastName;
+        _onbData.firstName         = properName(firstName);
+        _onbData.lastName          = properName(lastName);
         _onbData.phone             = phone;
         _onbData.currentRole       = currentRole;
-        _onbData.expectedSalaryUSD = usd ? Number(usd) : "";
-        _onbData.expectedSalaryCOP = cop ? Number(cop) : "";
+        _onbData.expectedSalaryUSD = usd ? salaryNumberFromInput(usd) : "";
+        _onbData.expectedSalaryCOP = cop ? salaryNumberFromInput(cop) : "";
         _onbData.linkedin          = linkedin;
         _onbRender(3);
       });
@@ -3174,7 +3193,7 @@ function renderProfileForm(mode = "profile") {
                   <option value="USD" ${normalizedSalary.salaryCurrency === "USD" ? "selected" : ""}>USD</option>
                   <option value="COP" ${normalizedSalary.salaryCurrency === "COP" ? "selected" : ""}>COP</option>
                 </select>
-                <input class="pf-input pf-salary-input" id="salaryInput" name="salary" value="${escapeAttr(normalizedSalary.salaryAmount ? formatSalaryInputValue(normalizedSalary.salaryAmount, normalizedSalary.salaryCurrency) : "")}" inputmode="numeric" placeholder="2,500" />
+                <input class="pf-input pf-salary-input" id="salaryInput" name="salary" value="${escapeAttr(normalizedSalary.salaryAmount ? formatSalaryInputValue(normalizedSalary.salaryAmount, normalizedSalary.salaryCurrency) : "")}" inputmode="numeric" oninput="window.__fmtSalary(this)" placeholder="2,500" />
               </div>
               <span class="pf-hint">How much you're looking for, per month.</span>
             </label>
@@ -3887,7 +3906,7 @@ function bindDashboardEvents() {
     const salary = normalizeSalaryValue(form.get("salary"), form.get("salaryCurrency"));
     const marketingConsent = form.get("marketingConsent") === "on";
     const data = {
-      name: form.get("name"),
+      name: properName(form.get("name")),
       targetRole: form.get("targetRole"),
       headline: form.get("targetRole"),
       department,

@@ -199,9 +199,19 @@ function normalizeLocationKey(value) {
     .replace(/^-|-$/g, "");
 }
 
+// Guard: a location/city value must never be an email address. On an
+// incomplete sign-up an email could otherwise fall through into these fields
+// and show up as the candidate's "city" in Admin.
+function safeLocationValue(value) {
+  const s = String(value || "").trim();
+  return s.includes("@") ? "" : s;
+}
+
 function toAtsCandidate(uid, data) {
   const code = data.candidateCode || candidateCodeForUid(uid);
-  const location = data.location || [data.locationCity || data.city, data.locationDepartment || data.department].filter(Boolean).join(", ");
+  const rawLocation = data.location || [data.locationCity || data.city, data.locationDepartment || data.department].filter(Boolean).join(", ");
+  const location = safeLocationValue(rawLocation);
+  const cityRaw = safeLocationValue(data.locationCity || data.city || location);
   const today = new Date().toISOString().slice(0, 10);
   return {
     code,
@@ -214,7 +224,7 @@ function toAtsCandidate(uid, data) {
     lastContact: data.lastContact || today,
     experience: Number(data.experience || 0),
     location,
-    city: normalizeLocationKey(data.locationCity || data.city || location),
+    city: normalizeLocationKey(cityRaw),
     department: data.locationDepartment || data.department || "",
     country: data.locationCountry || "Colombia",
     source: "talent.nearwork.co",
