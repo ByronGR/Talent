@@ -39,12 +39,19 @@ let _cvOverwrite    = false;
 let _pendingCvFile  = null; // CV file held across the setState re-render so submit can upload it
 
 // ─── Onboarding wizard state ──────────────────────────────────────────────────
-let _onbStep         = 1;
-let _onbData         = {};   // accumulated answers from steps 1-4
-let _onbCvFile       = null; // File object selected in step 1
+// 4-step redesign (+ done): 0 CV · 1 About you · 2 Experience · 3 What you want · 4 Done
+let _onbStep         = 0;
+let _onbData         = {};   // accumulated answers across every step
+let _onbCvFile       = null; // File object selected in step 0
+let _onbCvUploaded   = null; // CV already uploaded to Storage on drop (avoids re-upload at finish)
 let _onbParsePromise = null; // in-flight Affinda request
 let _onbParsed       = null; // resolved Affinda result
 let _onbInitialized  = false; // guards against wiping wizard progress on background re-renders
+let _onbParseStage   = "idle"; // idle | parsing | done — drives the rail parse card
+let _onbParseFound   = 0;      // 0-4 progress used by the parse card animation
+let _onbParseTimer   = null;   // interval that animates the parse card while Affinda runs
+let _onbAutosaveTimer = null;  // debounce handle for the lossless autosave
+let _onbConfettiDone  = false; // confetti fires once on the Done step
 
 // ─── Unsaved profile changes guard ────────────────────────────────────────────
 let _profileFormDirty = false;
@@ -1207,7 +1214,9 @@ async function loadDashboard(user) {
         // Preserve any in-progress flash message (e.g. "Analysing your CV…")
         // so a live notification update doesn't wipe it mid-parse.
         state.notifications = notifications;
-        if (state.view === "dashboard" && !state.message) renderDashboard();
+        // Don't repaint while the onboarding wizard owns the screen — it renders
+        // as a full-page takeover and a background snapshot would wipe progress.
+        if (state.view === "dashboard" && state.activePage !== "onboarding" && !state.message) renderDashboard();
       });
     }
   } catch (error) {
@@ -1764,586 +1773,931 @@ function renderOverview() {
   `;
 }
 
-function renderOnboarding() {
-  // Only seed wizard state the first time the wizard is shown for this session.
-  // renderDashboard() (and therefore renderOnboarding()) can be re-invoked in the
-  // background — e.g. a live notifications snapshot update — and re-running this
-  // setup would wipe whatever step/CV/answers the candidate has already entered.
-  if (!_onbInitialized) {
-    _onbInitialized = true;
-    _onbStep = 1;
-    // Pre-populate from any data already collected (e.g. from jobs.nearwork.co account creation)
-    // so the candidate doesn't have to re-enter what they've already provided.
-    const c = state.candidate || {};
-    const nameParts = String(c.name || "").trim().split(/\s+/).filter(Boolean);
-    _onbData = {
-      roleGroup:  c.roleGroup  || "",
-      targetRole: c.targetRole || "",
-      country:    c.locationCountry || c.country || "Colombia",
-      department: c.department || c.locationDepartment || "",
-      city:       c.city       || c.locationCity       || "",
-      english:    c.english    || "",
-      firstName:  c.firstName  || nameParts[0] || "",
-      lastName:   c.lastName   || nameParts.slice(1).join(" ") || "",
-      phone:      c.phone || c.whatsapp || "",
-      currentRole: c.currentRole || "",
-      expectedSalaryUSD: c.expectedSalaryUSD || (c.salaryCurrency !== "COP" ? c.salaryAmount : null) || "",
-      expectedSalaryCOP: c.expectedSalaryCOP || (c.salaryCurrency === "COP" ? c.salaryAmount : null) || "",
-      linkedin:   c.linkedin   || "",
-      experience: Array.isArray(c.workHistory) ? c.workHistory.map(w => ({ ...w })) : [],
-      languages:  Array.isArray(c.languages) ? [...c.languages] : [],
-      skills:     Array.isArray(c.skills) ? [...c.skills] : [],
-      certifications: Array.isArray(c.certifications) ? c.certifications.map(x => ({ ...x })) : [],
-    };
-    _onbCvFile = null; _onbParsePromise = null; _onbParsed = null;
-  }
-  return `<div id="onboardingWizard" class="onb-shell"></div>`;
+// ─── Onboarding wizard (4-step redesign) ──────────────────────────────────────
+// Full-page takeover rendered by renderOnboardingApp() (see render()). Vanilla
+// template-literal HTML + a separate binding pass, matching the rest of main.js.
+// Visual/UX ported from the design handoff; ships in teal (--green #10A07C).
+
+const _ONB_FUNCTIONS = ['Customer Success', 'Sales / SDR', 'Operations', 'Finance & Accounting', 'Marketing', 'Design', 'Engineering', 'Data', 'People / HR', 'Executive Assistant'];
+const _ONB_SOURCES = ['Google search', 'LinkedIn', 'A friend or colleague', 'ChatGPT', 'Claude', 'Instagram or TikTok', 'A Nearwork recruiter', 'Another job board', 'Other'];
+const _ONB_SKILL_POOL = ['HubSpot', 'Salesforce', 'Zendesk', 'Excel', 'SQL', 'Notion', 'Figma', 'Churn analysis', 'Onboarding', 'QBRs', 'Process design'];
+// Map the design's English scale onto the codes Admin/ATS already uses.
+const _ONB_ENG_SAVE = { basic: 'A2', intermediate: 'B1', advanced: 'B2', fluent: 'C1' };
+const _ONB_FN_FROM_GROUP = { 'Customer Success': 'Customer Success', 'Sales': 'Sales / SDR', 'Support': 'Customer Success', 'Operations': 'Operations', 'Marketing': 'Marketing', 'Engineering': 'Engineering', 'Finance': 'Finance & Accounting', 'Human Resources': 'People / HR' };
+
+// Dead entry kept only because the page-render map references it; the wizard is
+// intercepted in render() and drawn by renderOnboardingApp() instead.
+function renderOnboarding() { return ""; }
+// The wizard no longer renders inside the dashboard chrome, so this legacy hook
+// (still called from the profile bind pass) is a safe no-op.
+function bindOnboardingWizardEvents() {}
+
+function _onbEnglishFromExisting(v) {
+  const s = String(v || "").toUpperCase();
+  if (!s) return "";
+  if (s.includes("NATIVE") || s.startsWith("C")) return "fluent";
+  if (s.startsWith("B2")) return "advanced";
+  if (s.startsWith("B")) return "intermediate";
+  if (s.startsWith("A")) return "basic";
+  return "";
 }
 
-// ─── Onboarding wizard ────────────────────────────────────────────────────────
+function _onbSeed() {
+  if (_onbInitialized) return;
+  _onbInitialized = true;
+  _onbStep = 0;
+  _onbConfettiDone = false;
+  const c = state.candidate || {};
+  const nameParts = String(c.name || "").trim().split(/\s+/).filter(Boolean);
+  const cityText = c.location || [c.city || c.locationCity, c.department || c.locationDepartment].filter(Boolean).join(", ") || "";
+  const roles = Array.isArray(c.workHistory) && c.workHistory.length
+    ? c.workHistory.map((w) => ({ title: w.title || "", company: w.company || "", from: w.from || "", to: (w.to === "present" ? "" : w.to) || "", current: w.to === "present" || !!w.current, open: false }))
+    : [];
+  const edu = Array.isArray(c.certifications) && c.certifications.length
+    ? c.certifications.map((x) => ({ kind: "cert", title: x.name || x.title || "", school: x.issuer || x.school || "", year: x.date || x.year || "", open: false }))
+    : [];
+  if (Array.isArray(c.education)) c.education.forEach((e) => edu.push({ kind: "degree", title: e.degree || e.title || "", school: e.institution || e.school || "", year: e.year || "", open: false }));
+  const usd = Number(c.expectedSalaryUSD || c.salaryUSD || 0) || "";
+  const linkedin = String(c.linkedin || "").replace(/^https?:\/\//, "").replace(/^(www\.)?linkedin\.com\/in\//, "");
+  _onbData = {
+    cv: c.activeCvName || null,
+    first: c.firstName || nameParts[0] || "",
+    last: c.lastName || nameParts.slice(1).join(" ") || "",
+    email: c.email || state.user?.email || "",
+    phone: String(c.phone || c.whatsapp || "").replace(/^\+?57\s?/, ""),
+    city: cityText,
+    linkedin,
+    english: c.englishLevel || _onbEnglishFromExisting(c.english),
+    roles,
+    education: edu,
+    skills: Array.isArray(c.skills) ? [...new Set(c.skills.map(canonicalSkillName).filter(Boolean))] : [],
+    functions: Array.isArray(c.functions) && c.functions.length ? [...c.functions] : (_ONB_FN_FROM_GROUP[c.roleGroup] ? [_ONB_FN_FROM_GROUP[c.roleGroup]] : []),
+    workType: c.workType || "full",
+    availability: c.startAvailability || "2w",
+    salaryMin: c.expectedSalaryMinUSD || usd || "",
+    salaryMax: c.expectedSalaryMaxUSD || usd || "",
+    portfolio: String(c.portfolio || "").replace(/^https?:\/\//, ""),
+    files: Array.isArray(c.attachments) ? [...c.attachments] : [],
+    source: c.source || "",
+    sourceOther: c.sourceOther || "",
+    shareProfile: c.shareProfile !== false,
+    notifyMatches: c.notifyMatches !== false,
+    notifyNews: c.notifyNews === true,
+    summary: c.summary || "",
+    _cvFlags: {},
+  };
+  _onbCvFile = null; _onbParsePromise = null; _onbParsed = null;
+  _onbParseStage = _onbData.cv ? "done" : "idle";
+  _onbParseFound = _onbData.cv ? 4 : 0;
+}
 
-function bindOnboardingWizardEvents() {
-  if (!document.querySelector("#onboardingWizard")) return;
+// ── Small icon helper: sizes via the --isz CSS var, colours via currentColor ──
+function _onbI(name, px = 16, color = "") {
+  return `<span class="onb2-i" style="--isz:${px}px;${color ? `color:${color};` : ""}">${icon(name)}</span>`;
+}
+
+function _onbWordmark(size) {
+  return `<div class="onb2-wm" style="font-size:${size || 22}px">Near<span>work</span></div>`;
+}
+
+// ── Entry + shell ─────────────────────────────────────────────────────────────
+function renderOnboardingApp() {
+  _onbSeed();
+  app.innerHTML = `
+    <div class="onb2-page">
+      <aside class="onb2-rail" id="onb2Rail"></aside>
+      <div class="onb2-col">
+        <div class="onb2-topbar" id="onb2Topbar"></div>
+        <main class="onb2-main">
+          <div class="onb2-savebar" id="onb2Savebar"></div>
+          <div class="onb2-card" id="onb2Card"></div>
+          <div id="onb2Footer"></div>
+        </main>
+      </div>
+    </div>`;
   _onbRender(_onbStep);
 }
 
 function _onbRender(step) {
   _onbStep = step;
-  const el = document.querySelector("#onboardingWizard");
-  if (!el) return;
-  el.innerHTML = _onbStepHtml(step);
-  _onbBindStep(step);
+  const card = document.querySelector("#onb2Card");
+  if (!card) return;
+  const rail = document.querySelector("#onb2Rail");
+  const top = document.querySelector("#onb2Topbar");
+  const foot = document.querySelector("#onb2Footer");
+  const save = document.querySelector("#onb2Savebar");
+  if (rail) rail.innerHTML = _onbRailHtml();
+  if (top) top.innerHTML = _onbTopbarHtml();
+  if (save) save.innerHTML = step < 4 ? `<button type="button" class="onb2-linkrow" data-onb-save-exit>Save &amp; finish later ${_onbI("log-out", 14, "#9E9E9E")}</button>` : "";
+  card.innerHTML = _onbCardHtml(step);
+  // re-run the fade/rise entrance on every step change
+  card.classList.remove("onb2-card"); void card.offsetWidth; card.classList.add("onb2-card");
+  if (foot) foot.innerHTML = step < 4 ? _onbFooterHtml(step) : "";
+  syncIcons();
+  _onbBind(step);
+  if (step === 4) _onbFireConfetti();
 }
 
-function _onbProgress(step) {
-  const total = 3;
+// ── Rail / topbar / footer ────────────────────────────────────────────────────
+function _onbRailHtml() {
+  const steps = [["Your CV", "20 sec"], ["About you", "40 sec"], ["Experience", "45 sec"], ["What you want", "45 sec"]];
+  const pct = _onbStrength();
   return `
-    <div style="display:flex;align-items:center;gap:5px;margin-bottom:28px;">
-      ${Array.from({ length: total }, (_, i) => `
-        <div style="height:5px;border-radius:3px;flex:${i < step ? 2 : 1};background:${i < step ? "var(--green)" : "var(--border)"};transition:all .3s;"></div>
-      `).join("")}
-      <span style="margin-left:6px;font-size:11px;font-weight:600;color:var(--light);white-space:nowrap;">${step <= total ? `${step} / ${total}` : "Review"}</span>
+    <div>
+      <div style="margin-bottom:34px">${_onbWordmark()}</div>
+      <div style="display:flex;flex-direction:column;gap:2px">
+        ${steps.map((s, i) => {
+          const done = i < _onbStep, on = i === _onbStep;
+          return `<button type="button" class="onb2-railstep ${on ? "is-on" : ""} ${done ? "is-done" : ""}" data-onb-nav="${i}">
+            <span class="onb2-railnum">${done ? _onbI("check", 12, "#fff") : i + 1}</span>
+            <span><span class="onb2-railstep-label">${s[0]}</span><span class="onb2-railstep-hint">${s[1]}</span></span>
+          </button>`;
+        }).join("")}
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      ${_onbParseCardHtml()}
+      <div style="padding-top:14px;border-top:1px solid var(--onb2-g200)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px">
+          <span style="font-size:12px;font-weight:600;color:var(--onb2-g600)">Profile strength</span>
+          <span style="font-size:12px;color:var(--onb2-accent-ink);font-weight:500" id="onb2StrengthPct">${pct}%</span>
+        </div>
+        <div class="onb2-meter"><div class="onb2-meter-fill" id="onb2StrengthBar" style="width:${pct}%"></div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:9px;font-size:12px;color:var(--onb2-g500)">
+        ${_onbI("lock", 13, "#9E9E9E")}<span>Private until you say otherwise</span>
+      </div>
     </div>`;
 }
 
-function _onbField(label, optional, input) {
-  return `<label style="display:flex;flex-direction:column;gap:5px;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--light);">${label}${optional ? `<span style="font-weight:400;font-size:10px;text-transform:none;letter-spacing:0;opacity:.7;">(optional)</span>` : ""} ${input}</label>`;
-}
-
-function _onbInput(id, type, value, placeholder, extra = "") {
-  return `<input id="${id}" type="${type}" value="${escapeAttr(value || "")}" placeholder="${escapeAttr(placeholder)}" ${extra} style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;width:100%;box-sizing:border-box;" />`;
-}
-
-function _onbSelect(id, options, selected) {
-  const opts = options.map(([val, label]) => `<option value="${escapeAttr(val)}" ${val === selected ? "selected" : ""}>${escapeHtml(label)}</option>`).join("");
-  return `<select id="${id}" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;width:100%;box-sizing:border-box;">${opts}</select>`;
-}
-
-function _onbActions(backStep, nextLabel) {
-  return `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:28px;">
-    ${backStep ? `<button type="button" id="onbBack" class="secondary-action">← Back</button>` : `<span></span>`}
-    <button type="button" id="onbNext" class="primary-action fit">${nextLabel || "Continue →"}</button>
+function _onbParseCardHtml() {
+  if (_onbParseStage === "idle") {
+    return `<div class="onb2-parsecard is-idle">${_onbI("scan-line", 15, "#9E9E9E")}<span style="font-size:12.3px;line-height:1.45;color:var(--onb2-g500)">Add a CV and we'll fill the rest of this form for you.</span></div>`;
+  }
+  const done = _onbParseStage === "done";
+  const roleN = _onbData.roles.length, eduN = _onbData.education.length, skN = _onbData.skills.length;
+  const lines = [
+    ["file-text", "Reading your document"],
+    ["briefcase", `Work history · ${roleN} role${roleN === 1 ? "" : "s"}`],
+    ["graduation-cap", `Education · ${eduN} ${eduN === 1 ? "entry" : "entries"}`],
+    ["tags", `Skills · ${skN} found`],
+  ];
+  return `<div class="onb2-parsecard ${done ? "is-done" : ""}">
+    <div style="display:flex;align-items:center;gap:9px;margin-bottom:11px">
+      ${done ? _onbI("check-circle", 15, "#10A07C") : `<span class="onb2-spin" style="width:14px;height:14px;border-radius:50%;border:2px solid var(--onb2-g200);border-top-color:var(--onb2-accent);display:inline-block"></span>`}
+      <span style="font-size:11px;letter-spacing:0.05em;color:${done ? "var(--onb2-accent-ink)" : "var(--onb2-g500)"};font-weight:600">${done ? "CV IMPORTED" : "READING CV…"}</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${lines.map((l, i) => {
+        const ld = _onbParseFound > i;
+        return `<div style="display:flex;align-items:center;gap:9px;opacity:${ld ? 1 : 0.4};transition:opacity 300ms">
+          ${_onbI(ld ? "check" : l[0], 13, ld ? "#10A07C" : "#9E9E9E")}
+          <span style="font-size:12.3px;color:${ld ? "var(--onb2-g700)" : "var(--onb2-g500)"}">${l[1]}</span>
+        </div>`;
+      }).join("")}
+    </div>
   </div>`;
 }
 
-function _onbStepHtml(step) {
+function _onbTopbarHtml() {
+  return `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      ${_onbWordmark(19)}
+      <span style="font-size:11.5px;letter-spacing:0.04em;color:var(--onb2-g500);font-weight:600">${_onbStep >= 4 ? "DONE" : `${_onbStep + 1} / 4`}</span>
+    </div>
+    <div style="height:4px;border-radius:999px;background:var(--onb2-g200);overflow:hidden">
+      <div style="width:${((Math.min(_onbStep, 4) + 1) / 5) * 100}%;height:100%;background:linear-gradient(90deg,#10A07C,#AF7AC5);transition:width 400ms cubic-bezier(0.16,1,0.3,1)"></div>
+    </div>`;
+}
+
+function _onbFooterHtml(step) {
+  const blocker = _onbBlocker(step);
+  const parsed = !!_onbData.cv;
+  const nextLabel = step === 0 ? (parsed ? "Continue while it reads" : "Continue")
+    : step === 3 ? (_onbData.first ? `Finish, ${escapeHtml(_onbData.first)}` : "Finish and go live")
+    : "Continue";
+  const skip = step === 0 && !parsed;
+  return `
+    <div class="onb2-footer">
+      <div id="onb2Blocker">${blocker ? `<div class="onb2-blocker">${_onbI("info", 14, "#E74C7C")}${escapeHtml(blocker)}</div>` : ""}</div>
+      <div class="onb2-footer-row">
+        ${step > 0 ? `<button type="button" class="onb2-btn onb2-btn-ghost" data-onb-back>${_onbI("arrow-left", 17, "#555555")}Back</button>` : ""}
+        <button type="button" class="onb2-btn onb2-btn-primary" id="onb2Next" data-onb-next ${blocker ? "disabled" : ""}>${nextLabel}${_onbI("arrow-right", 17, "#fff")}</button>
+        ${skip ? `<button type="button" class="onb2-linkrow" data-onb-skip style="text-decoration:underline;text-underline-offset:3px">Skip for now</button>` : ""}
+        <span class="onb2-saved">${_onbI("cloud", 14, "#9E9E9E")}Saved automatically</span>
+      </div>
+    </div>`;
+}
+
+// ── Derived state ─────────────────────────────────────────────────────────────
+function _onbFilledRoles() { return (_onbData.roles || []).filter((r) => r.title && r.company); }
+
+function _onbStrength(done) {
   const d = _onbData;
+  const filled = _onbFilledRoles().length;
+  return Math.min(100, Math.round(
+    5
+    + (d.cv ? 14 : 0)
+    + (d.first ? 4 : 0) + (d.last ? 4 : 0) + (d.phone ? 5 : 0) + (d.city ? 5 : 0) + (d.linkedin ? 6 : 0)
+    + Math.min(18, filled * 9)
+    + Math.min(8, d.education.filter((e) => e.title).length * 4)
+    + Math.min(12, d.skills.length * 1.5)
+    + Math.min(6, d.functions.length * 3)
+    + (Number(d.salaryMin) && Number(d.salaryMax) ? 4 : 0)
+    + (d.portfolio || d.files.length ? 3 : 0)
+    + (d.shareProfile ? 3 : 0)
+    + ((done || _onbStep >= 4) ? 3 : 0)
+  ));
+}
+
+function _onbBlocker(step) {
+  const d = _onbData;
+  if (step === 1) return (!d.first || !d.last) ? "Add your first and last name to continue." : !d.phone ? "Add a phone number so companies can schedule interviews." : !d.city ? "Let us know where you’re based." : null;
+  if (step === 2) return !_onbFilledRoles().length ? "Add at least one role — job title and company." : d.skills.length < 3 ? "Pick at least 3 skills so we can match you (more is better)." : null;
+  if (step === 3) return !d.functions.length ? "Pick at least one type of role you’re open to." : (!Number(d.salaryMin) || !Number(d.salaryMax)) ? "Add your salary range — companies filter on it." : !d.shareProfile ? "We need permission to show your profile to companies." : null;
+  return null;
+}
+
+function _onbSalaryBand() {
+  const f = (_onbData.functions && _onbData.functions[0]) || "";
+  const table = { "Engineering": [1800, 3400], "Data": [1700, 3200], "Design": [1500, 2800], "Finance & Accounting": [1500, 2600], "Marketing": [1400, 2600] };
+  return table[f] || [1400, 2300];
+}
+
+// ── Primitives (HTML string builders) ─────────────────────────────────────────
+function _onbField(o) {
+  const attrs = `class="onb2-input" ${o.textarea ? `rows="3"` : `type="${o.type || "text"}"`} ${o.locked ? "disabled" : ""} placeholder="${escapeAttr(o.placeholder || "")}" ${o.data || ""}`;
+  const inner = o.textarea
+    ? `<textarea ${attrs}>${escapeHtml(o.value || "")}</textarea>`
+    : `<input ${attrs} value="${escapeAttr(o.value == null ? "" : o.value)}" />`;
+  return `<label class="onb2-fieldwrap">
+    <div class="onb2-fieldhead">
+      <span class="onb2-fieldlabel">${escapeHtml(o.label)}${o.req ? `<span class="onb2-req" title="Required">*</span>` : ""}${o.badge ? `<span class="onb2-badge">${_onbI("sparkles", 10, "#10A07C")}${escapeHtml(o.badge)}</span>` : ""}</span>
+      ${o.aside || ""}
+    </div>
+    <div class="onb2-fieldbox ${o.locked ? "is-locked" : ""}">
+      ${o.prefix ? `<span class="onb2-prefix">${escapeHtml(o.prefix)}</span>` : ""}
+      ${inner}
+      ${o.trailing || ""}
+    </div>
+    ${o.hint ? `<div class="onb2-fieldhint">${o.hint}</div>` : ""}
+  </label>`;
+}
+
+function _onbSegmented(group, options, value, sub) {
+  return `<div class="onb2-seg" style="grid-template-columns:repeat(${options.length},minmax(0,1fr))">
+    ${options.map((o) => `<button type="button" class="onb2-seg-btn ${o.v === value ? "is-on" : ""}" data-onb-seg="${group}" data-onb-val="${escapeAttr(o.v)}">${escapeHtml(o.label)}${sub && o.sub ? `<div class="onb2-seg-sub">${escapeHtml(o.sub)}</div>` : ""}</button>`).join("")}
+  </div>`;
+}
+
+function _onbChips(group, options, values, addable) {
+  return `<div class="onb2-chips">
+    ${options.map((o) => {
+      const on = values.includes(o);
+      return `<button type="button" class="onb2-chip ${on ? "is-on" : ""}" data-onb-chip="${group}" data-onb-val="${escapeAttr(o)}">${on ? _onbI("check", 13, "#10A07C") : ""}${escapeHtml(o)}</button>`;
+    }).join("")}
+    ${addable ? `<span class="onb2-chip-add"><input type="text" placeholder="Add your own" data-onb-chip-input="${group}" /><button type="button" data-onb-chip-add="${group}" aria-label="Add">${_onbI("plus", 14, "#757575")}</button></span>` : ""}
+  </div>`;
+}
+
+function _onbToggle(key, title, desc, on, required) {
+  return `<div class="onb2-toggle ${on ? "is-on" : ""} ${required ? "is-required" : ""}" data-onb-toggle="${key}" ${required ? `data-onb-required="1"` : ""}>
+    <div style="flex:1">
+      <div class="onb2-toggle-title">${escapeHtml(title)}${required ? `<span class="onb2-toggle-req">REQUIRED</span>` : ""}</div>
+      <p class="onb2-toggle-desc">${escapeHtml(desc)}</p>
+    </div>
+    <div class="onb2-switch"><div class="onb2-knob"></div></div>
+  </div>`;
+}
+
+function _onbHead(eyebrow, minutes, title, sub) {
+  return `<div style="margin-bottom:26px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <span class="onb2-eyebrow">${escapeHtml(eyebrow)}</span>
+      ${minutes ? `<span class="onb2-eyebrow-dot"></span><span class="onb2-minutes">${escapeHtml(minutes)}</span>` : ""}
+    </div>
+    <h1 class="onb2-title">${escapeHtml(title)}</h1>
+    <p class="onb2-sub">${escapeHtml(sub)}</p>
+  </div>`;
+}
+
+function _onbGroup(o) {
+  return `<div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:${o.hint ? 4 : 9}px">
+      <span class="onb2-grouplabel">${escapeHtml(o.label)}${o.req ? `<span class="onb2-req">*</span>` : ""}</span>
+      ${o.aside || ""}
+    </div>
+    ${o.hint ? `<div class="onb2-grouphint" style="margin-bottom:10px">${o.hint}</div>` : ""}
+    ${o.body}
+  </div>`;
+}
+
+// ── Step cards ────────────────────────────────────────────────────────────────
+function _onbCardHtml(step) {
   switch (step) {
-
-    // ── Step 1: CV ────────────────────────────────────────────────────────────
-    case 1: {
-      const hasFile = Boolean(_onbCvFile);
-      return `
-        <div class="onb-step">
-          ${_onbProgress(1)}
-          <p class="eyebrow">Step 1 · Your CV</p>
-          <h2 class="onb-heading">Upload your CV to get started</h2>
-          <p class="onb-sub">We'll extract your experience, skills, and contact info automatically — so you don't have to type it all out.</p>
-          <div class="upload-box" style="margin-bottom:4px;" id="onbCvBox">
-            <input id="onbCvInput" type="file" accept=".pdf,.doc,.docx" style="display:none;" />
-            <label for="onbCvInput" class="upload-trigger">${icon("upload")} Choose file</label>
-            <p id="onbCvStatus" style="font-size:12px;color:var(--green);min-height:18px;margin:0;">${hasFile ? `✓ ${escapeHtml(_onbCvFile.name)}` : ""}</p>
-            <p>PDF or Word · max 10 MB</p>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:24px;">
-            <button type="button" id="onbSkipCv" style="background:none;border:none;font-size:13px;color:var(--light);cursor:pointer;text-decoration:underline;padding:0;">Skip — I'll fill in manually</button>
-            <button type="button" id="onbNext" class="primary-action fit" ${hasFile ? "" : "disabled"}>Continue →</button>
-          </div>
-        </div>`;
-    }
-
-    // ── Step 2: Basic info ────────────────────────────────────────────────────
-    case 2: {
-      const email = state.candidate?.email || state.user?.email || "";
-      const phone = d.phone || (_onbParsed?.phone ?? "");
-      const currentRole = d.currentRole || (_onbParsed?.workHistory?.[0]?.title ?? "");
-      return `
-        <div class="onb-step">
-          ${_onbProgress(2)}
-          <p class="eyebrow">Step 2 · Your profile</p>
-          <h2 class="onb-heading">Tell us about yourself</h2>
-          <p class="onb-sub">This is the basic information we'll use across every role you apply for.</p>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:4px;">
-            ${_onbField("First name", false, _onbInput("onbFirstName", "text", d.firstName || "", "María", 'autocomplete="given-name"'))}
-            ${_onbField("Last name", false, _onbInput("onbLastName", "text", d.lastName || "", "García", 'autocomplete="family-name"'))}
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:4px;">
-            ${_onbField("Email", false, _onbInput("onbEmail", "email", email, "", "disabled"))}
-            ${_onbField("Phone", false, _onbInput("onbPhone", "tel", phone, "+57 300 123 4567", 'autocomplete="tel"'))}
-          </div>
-          ${_onbField("Current role", false, _onbInput("onbCurrentRole", "text", currentRole, "e.g. Customer Success Manager"))}
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:4px;">
-            ${_onbField("Expected salary — USD", true, _onbInput("onbSalaryUSD", "text", formatSalaryInputValue(d.expectedSalaryUSD), "2,500", 'inputmode="numeric" oninput="window.__fmtSalary(this)"'))}
-            ${_onbField("Expected salary — COP", true, _onbInput("onbSalaryCOP", "text", formatSalaryInputValue(d.expectedSalaryCOP), "10,000,000", 'inputmode="numeric" oninput="window.__fmtSalary(this)"'))}
-          </div>
-          ${_onbField("LinkedIn", true, _onbInput("onbLinkedin", "url", d.linkedin || "", "https://linkedin.com/in/..."))}
-          <p id="onbBasicError" style="font-size:12px;color:#e74c3c;min-height:16px;margin:4px 0 0;"></p>
-          ${_onbActions(1)}
-        </div>`;
-    }
-
-    // ── Step 3: Role + Location ────────────────────────────────────────────────
-    case 3: {
-      const rg = d.roleGroup || Object.keys(roleGroups)[0] || "";
-      const country = d.country || "Colombia";
-      const isCo = country === "Colombia";
-      const dept  = d.department || Object.keys(colombiaLocations)[0] || "";
-      const cities = colombiaLocations[dept] || [];
-      return `
-        <div class="onb-step">
-          ${_onbProgress(3)}
-          <p class="eyebrow">Step 3 · Role & location</p>
-          <h2 class="onb-heading">What role are you looking for, and where are you based?</h2>
-          <p class="onb-sub">We use this to match you with the right openings from our clients.</p>
-          <div style="display:grid;gap:12px;margin-bottom:4px;">
-            ${_onbField("Area", false, `<select id="onbRoleGroup" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${roleGroupOptions(rg)}</select>`)}
-            ${_onbField("Role", false, `<select id="onbTargetRole" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${roleOptionsForGroup(rg, d.targetRole || "")}</select>`)}
-            ${_onbField("Country", false, `<select id="onbCountry" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${COUNTRIES.map((co) => `<option value="${escapeAttr(co)}" ${co === country ? "selected" : ""}>${escapeHtml(co)}</option>`).join("")}</select>`)}
-            <div id="onbCoLoc" style="display:${isCo ? "grid" : "none"};gap:12px;">
-              ${_onbField("Department", false, `<select id="onbDept" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${Object.keys(colombiaLocations).map((dep) => `<option value="${escapeAttr(dep)}" ${dep === dept ? "selected" : ""}>${escapeHtml(dep)}</option>`).join("")}</select>`)}
-              ${_onbField("City", false, `<select id="onbCity" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${cities.map((c) => `<option value="${escapeAttr(c)}" ${c === d.city ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select>`)}
-            </div>
-            <p id="onbCoHint" style="display:${isCo ? "none" : "block"};font-size:12.5px;color:var(--mid);margin:0;line-height:1.5;">No state or city needed — country is enough to continue.</p>
-            ${_onbField("English level", false, `<select id="onbEnglish" style="font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;">${["", "B1", "B2", "C1", "C2", "Native"].map((l) => `<option value="${l}" ${l === d.english ? "selected" : ""}>${l || "Select level"}</option>`).join("")}</select>`)}
-          </div>
-          ${_onbActions(2, "Review →")}
-        </div>`;
-    }
-
-    // ── Review ────────────────────────────────────────────────────────────────
-    case 4: return _onbReviewHtml();
-
+    case 0: return _onbStepCv();
+    case 1: return _onbStepAbout();
+    case 2: return _onbStepExperience();
+    case 3: return _onbStepPreferences();
+    case 4: return _onbStepDone();
     default: return "";
   }
 }
 
-const ONB_LIST_INPUT_STYLE = "font-size:14px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;outline:none;width:100%;box-sizing:border-box;";
-const ONB_LIST_REMOVE_STYLE = "flex-shrink:0;width:38px;height:38px;border:1.5px solid var(--border);border-radius:8px;background:#fff;color:var(--light);font-size:14px;cursor:pointer;";
-
-function _onbListLabel(text) {
-  return `<label style="display:block;margin-bottom:8px;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--light);">${text}</label>`;
+function _onbStepCv() {
+  const has = !!_onbData.cv;
+  const pct = Math.round(_onbParseFound / 4 * 100);
+  const zone = !has
+    ? `<div class="onb2-dropzone" id="onb2Dropzone">
+        <input type="file" id="onb2CvInput" accept=".pdf,.doc,.docx" style="display:none" />
+        <div style="width:54px;height:54px;border-radius:16px;background:var(--onb2-accent-bg);border:1px solid var(--onb2-accent-border);display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px">${_onbI("upload-cloud", 24, "#10A07C")}</div>
+        <div style="font-size:16.5px;font-weight:600;color:var(--onb2-black);letter-spacing:-0.02em">Drop your CV here, or browse</div>
+        <div style="font-size:13.5px;color:var(--onb2-g500);margin-top:7px">PDF, DOC or DOCX · up to 10 MB · English or Spanish</div>
+      </div>`
+    : `<div class="onb2-filecard">
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="width:42px;height:42px;border-radius:11px;background:#fff;border:1px solid var(--onb2-accent-border);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">${_onbI("file-text", 19, "#10A07C")}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14.5px;font-weight:600;color:var(--onb2-black);letter-spacing:-0.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(_onbData.cv)}</div>
+            <div style="font-size:12.5px;color:var(--onb2-g600);margin-top:3px" id="onb2CvStatus">${_onbParseStage === "done" ? "Imported" : `Reading (${pct}%)`}</div>
+          </div>
+          <button type="button" data-onb-cv-remove aria-label="Remove CV" style="background:transparent;border:none;cursor:pointer;padding:8px;border-radius:9px;display:inline-flex">${_onbI("x", 17, "#757575")}</button>
+        </div>
+        ${_onbParseStage !== "done" ? `<div style="height:5px;border-radius:999px;background:rgba(255,255,255,0.7);margin-top:14px;overflow:hidden"><div id="onb2CvBar" style="width:${Math.max(8, pct)}%;height:100%;background:var(--onb2-accent);border-radius:999px;transition:width 600ms cubic-bezier(0.16,1,0.3,1)"></div></div>` : ""}
+      </div>`;
+  return `<div>
+    ${_onbHead("STEP 01 · YOUR CV", "20 SEC", "Start with your CV.", "Drop it in and we'll read it while you answer a few short questions — no retyping your whole career.")}
+    ${zone}
+    <div style="margin-top:14px">
+      <button type="button" class="onb2-import" data-onb-manual>
+        ${_onbI("pencil-line", 17, "#10A07C")}
+        <span style="flex:1"><span style="display:block;font-size:14px;font-weight:600;color:var(--onb2-black);letter-spacing:-0.01em">Enter my details manually</span><span style="display:block;font-size:12.5px;color:var(--onb2-g500);margin-top:3px">No CV handy? It takes about 3 minutes</span></span>
+        ${_onbI("arrow-right", 16, "#9E9E9E")}
+      </button>
+    </div>
+    <div style="display:flex;gap:11px;align-items:flex-start;margin-top:22px;padding:14px 16px;background:var(--onb2-g50);border-radius:12px">
+      ${_onbI("shield-check", 16, "#757575")}
+      <p style="font-size:12.8px;line-height:1.5;color:var(--onb2-g600);margin:0">Your CV is only used to build your profile. Nothing is shared with a company until you approve it on the last step.</p>
+    </div>
+  </div>`;
 }
 
-function _onbReviewHtml() {
+function _onbStepAbout() {
   const d = _onbData;
-  const p = _onbParsed || {};
-
-  // Pre-fill editable lists from the parsed CV the first time we land on Review.
-  if (!d.experience.length && Array.isArray(p.workHistory) && p.workHistory.length) {
-    d.experience = p.workHistory.map((w) => ({ company: w.company || "", title: w.title || "", from: w.from || "", to: w.to || "" }));
-  }
-  if (!d.languages.length && Array.isArray(p.languages) && p.languages.length) {
-    d.languages = p.languages.filter(Boolean).map(String);
-  }
-  if (!d.skills.length && Array.isArray(p.skills) && p.skills.length) {
-    d.skills = [...new Set(p.skills.map(canonicalSkillName).filter(Boolean))];
-  }
-  if (!d.certifications.length && Array.isArray(p.certifications) && p.certifications.length) {
-    d.certifications = p.certifications.map((c) => ({ name: c.name || "", issuer: c.issuer || "", date: c.date || "" }));
-  }
-
-  const name     = [d.firstName, d.lastName].filter(Boolean).join(" ") || state.candidate?.name || "—";
-  const role     = d.targetRole || "—";
-  const location = (d.country && d.country !== "Colombia")
-    ? d.country
-    : ([d.city, d.department].filter(Boolean).join(", ") || "—");
-  const salaryParts = [];
-  if (d.expectedSalaryUSD) salaryParts.push(`$${Number(d.expectedSalaryUSD).toLocaleString("en-US")} USD/mo`);
-  if (d.expectedSalaryCOP) salaryParts.push(`$${Number(d.expectedSalaryCOP).toLocaleString("es-CO")} COP/mo`);
-  const salary   = salaryParts.join(" · ") || "—";
-  const english  = d.english  || "—";
-  const phone    = d.phone || "—";
-  const cvName   = _onbCvFile?.name || "";
-
-  const row = (label, value) => !value || value === "—" ? "" : `
-    <div style="display:flex;gap:16px;padding:10px 0;border-bottom:1px solid var(--border);">
-      <span style="width:110px;flex-shrink:0;font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--light);padding-top:3px;">${label}</span>
-      <span style="font-size:13px;color:var(--black);line-height:1.5;">${escapeHtml(String(value))}</span>
-    </div>`;
-
-  return `
-    <div class="onb-step">
-      <p class="eyebrow" style="color:var(--green);">Almost done</p>
-      <h2 class="onb-heading">Does this look right?</h2>
-      <p class="onb-sub" style="margin-bottom:20px;">Review your profile before we save it. You can always update it later from Settings.</p>
-      <div style="border:1.5px solid var(--border);border-radius:12px;padding:2px 16px 2px;margin-bottom:24px;">
-        ${row("Name",     name)}
-        ${row("Role",     role)}
-        ${row("Location", location)}
-        ${row("Salary",   salary)}
-        ${row("English",  english)}
-        ${row("Phone",    phone)}
-        ${row("Current role", d.currentRole || "—")}
-        ${cvName ? row("CV", cvName) : ""}
+  const parsed = !!d.cv;
+  const f = d._cvFlags || {};
+  return `<div>
+    ${_onbHead("STEP 02 · ABOUT YOU", "40 SEC", parsed && d.first ? `Nice to meet you, ${d.first}.` : "Tell us who you are.", parsed ? "We pulled these from your CV — fix anything that looks off." : "The basics a hiring team needs to reach you.")}
+    <div style="display:flex;flex-direction:column;gap:18px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" class="onb2-two">
+        ${_onbField({ label: "First name", req: true, value: d.first, placeholder: "Camila", badge: f.first ? "CV" : null, data: `data-onb-field="first"` })}
+        ${_onbField({ label: "Last name", req: true, value: d.last, placeholder: "Restrepo", badge: f.last ? "CV" : null, data: `data-onb-field="last"` })}
       </div>
-
-      <div class="field" style="margin-bottom:20px;">
-        ${_onbListLabel("Experience")}
-        <div id="onbExperienceList"></div>
-        <button type="button" class="secondary-action" id="onbAddExperience">+ Add position</button>
+      ${_onbField({ label: "Email", req: true, value: d.email, locked: true, trailing: `<span class="onb2-verified">${_onbI("check", 12, "#16A34A")}Verified</span>` })}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" class="onb2-two">
+        ${_onbField({ label: "WhatsApp / phone", req: true, prefix: "+57", value: d.phone, placeholder: "300 123 4567", hint: "Used for interview scheduling only.", data: `data-onb-field="phone"` })}
+        ${_onbField({ label: "Where you’re based", req: true, value: d.city, placeholder: "Medellín, Colombia", badge: f.city ? "CV" : null, hint: "We match you to overlapping US time zones.", data: `data-onb-field="city"` })}
       </div>
-
-      <div class="field" style="margin-bottom:20px;">
-        ${_onbListLabel("Languages")}
-        <div id="onbLanguagesList"></div>
-        <button type="button" class="secondary-action" id="onbAddLanguage">+ Add language</button>
-      </div>
-
-      <div class="field" style="margin-bottom:20px;">
-        ${_onbListLabel("Skills")}
-        ${skillSearchMarkup(d.skills)}
-      </div>
-
-      <div class="field" style="margin-bottom:20px;">
-        ${_onbListLabel("Certifications")}
-        <div id="onbCertificationsList"></div>
-        <button type="button" class="secondary-action" id="onbAddCertification">+ Add certification</button>
-      </div>
-
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <button type="button" id="onbEdit" class="secondary-action">← Edit</button>
-        <button type="button" id="onbFinish" class="primary-action fit">${icon("check")} Finish setup</button>
-      </div>
-      <p id="onbFinishErr" style="font-size:12px;color:#e74c3c;text-align:right;min-height:18px;margin-top:6px;"></p>
-    </div>`;
+      ${_onbField({ label: "LinkedIn", prefix: "linkedin.com/in/", value: d.linkedin, placeholder: "your-handle", hint: "Optional, but profiles with LinkedIn get shortlisted ~2× more often.", data: `data-onb-field="linkedin"` })}
+      ${_onbGroup({ label: "English level", req: true, hint: "Be honest — we place people at every level, and we'll never put you in an interview you can't win.", body: _onbSegmented("english", [{ v: "basic", label: "Basic", sub: "A1–A2" }, { v: "intermediate", label: "Intermediate", sub: "B1" }, { v: "advanced", label: "Advanced", sub: "B2" }, { v: "fluent", label: "Fluent", sub: "C1+" }], d.english, true) })}
+    </div>
+  </div>`;
 }
 
-function _onbRenderExperienceList() {
-  const container = document.querySelector("#onbExperienceList");
-  if (!container) return;
-  container.innerHTML = "";
-  if (!_onbData.experience.length) {
-    container.innerHTML = `<p style="font-size:12px;color:var(--light);margin:0 0 10px;">No experience added yet.</p>`;
-  }
-  _onbData.experience.forEach((exp, idx) => {
-    const row = document.createElement("div");
-    row.style.cssText = "border:1.5px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;";
-    row.innerHTML = `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-        <input type="text" data-k="title" placeholder="Title" value="${escapeAttr(exp.title || "")}" style="${ONB_LIST_INPUT_STYLE}">
-        <input type="text" data-k="company" placeholder="Company" value="${escapeAttr(exp.company || "")}" style="${ONB_LIST_INPUT_STYLE}">
+function _onbRoleCard(r, i) {
+  const open = r.open;
+  const initials = (r.company || "?").slice(0, 2).toUpperCase();
+  const meta = [r.company, r.from && `${r.from} – ${r.current ? "Present" : (r.to || "")}`].filter(Boolean).join(" · ") || "Add the details";
+  return `<div class="onb2-ecard ${open ? "is-open" : ""}">
+    <div class="onb2-ecard-head">
+      <div class="onb2-ecard-icon">${escapeHtml(initials)}</div>
+      <div style="flex:1;min-width:0">
+        <div class="onb2-ecard-title">${escapeHtml(r.title || "New role")}</div>
+        <div class="onb2-ecard-meta">${escapeHtml(meta)}</div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center;">
-        <input type="month" data-k="from" value="${escapeAttr(exp.from || "")}" style="${ONB_LIST_INPUT_STYLE}">
-        <input type="month" data-k="to" value="${exp.to === "present" ? "" : escapeAttr(exp.to || "")}" ${exp.to === "present" ? "disabled" : ""} style="${ONB_LIST_INPUT_STYLE}">
-        <button type="button" class="onb-list-remove" aria-label="Remove" style="${ONB_LIST_REMOVE_STYLE}">×</button>
+      ${r.current ? `<span class="onb2-current-chip">CURRENT</span>` : ""}
+      <button type="button" class="onb2-ecard-edit" data-onb-role-edit="${i}">${open ? "Done" : "Edit"}${_onbI(open ? "chevron-up" : "chevron-down", 14, "#10A07C")}</button>
+    </div>
+    ${open ? `<div class="onb2-ecard-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px" class="onb2-two">
+        ${_onbField({ label: "Job title", value: r.title, placeholder: "Customer Success Manager", data: `data-onb-rolefield="title" data-onb-idx="${i}"` })}
+        ${_onbField({ label: "Company", value: r.company, placeholder: "Rappi", data: `data-onb-rolefield="company" data-onb-idx="${i}"` })}
       </div>
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mid);margin-top:8px;">
-        <input type="checkbox" data-k="current" ${exp.to === "present" ? "checked" : ""}> I currently work here
-      </label>`;
-    row.querySelectorAll('input[type="text"][data-k], input[type="month"][data-k]').forEach((inp) => {
-      inp.addEventListener("input", (e) => { exp[e.target.dataset.k] = e.target.value; });
-    });
-    row.querySelector('input[type="checkbox"][data-k="current"]')?.addEventListener("change", (e) => {
-      exp.to = e.target.checked ? "present" : "";
-      _onbRenderExperienceList();
-    });
-    row.querySelector(".onb-list-remove")?.addEventListener("click", () => {
-      _onbData.experience.splice(idx, 1);
-      _onbRenderExperienceList();
-    });
-    container.appendChild(row);
-  });
-}
-
-function _onbRenderLanguagesList() {
-  const container = document.querySelector("#onbLanguagesList");
-  if (!container) return;
-  container.innerHTML = "";
-  if (_onbData.english) {
-    const englishRow = document.createElement("div");
-    englishRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:var(--gray-1);font-size:14px;color:var(--black);";
-    englishRow.innerHTML = `<span style="font-weight:600;">English</span><span style="color:var(--light);">${escapeHtml(_onbData.english)}</span>`;
-    container.appendChild(englishRow);
-  }
-  if (!_onbData.languages.length) {
-    const empty = document.createElement("p");
-    empty.style.cssText = "font-size:12px;color:var(--light);margin:0 0 10px;";
-    empty.textContent = "No other languages added yet.";
-    container.appendChild(empty);
-  }
-  _onbData.languages.forEach((lang, idx) => {
-    const row = document.createElement("div");
-    row.style.cssText = "display:flex;gap:10px;align-items:center;margin-bottom:8px;";
-    row.innerHTML = `
-      <input type="text" value="${escapeAttr(lang)}" placeholder="e.g. English (B2)" style="${ONB_LIST_INPUT_STYLE}flex:1;">
-      <button type="button" class="onb-list-remove" aria-label="Remove" style="${ONB_LIST_REMOVE_STYLE}">×</button>`;
-    row.querySelector("input").addEventListener("input", (e) => { _onbData.languages[idx] = e.target.value; });
-    row.querySelector(".onb-list-remove").addEventListener("click", () => {
-      _onbData.languages.splice(idx, 1);
-      _onbRenderLanguagesList();
-    });
-    container.appendChild(row);
-  });
-}
-
-function _onbRenderCertificationsList() {
-  const container = document.querySelector("#onbCertificationsList");
-  if (!container) return;
-  container.innerHTML = "";
-  if (!_onbData.certifications.length) {
-    container.innerHTML = `<p style="font-size:12px;color:var(--light);margin:0 0 10px;">No certifications added yet.</p>`;
-  }
-  _onbData.certifications.forEach((cert, idx) => {
-    const row = document.createElement("div");
-    row.style.cssText = "display:flex;gap:10px;align-items:flex-start;margin-bottom:8px;";
-    row.innerHTML = `
-      <div class="onb-cert-grid" style="flex:1;">
-        <input type="text" data-k="name" value="${escapeAttr(cert.name || "")}" placeholder="Certification name" style="${ONB_LIST_INPUT_STYLE}">
-        <input type="text" data-k="issuer" value="${escapeAttr(cert.issuer || "")}" placeholder="Issuer" style="${ONB_LIST_INPUT_STYLE}">
-        <input type="text" data-k="date" value="${escapeAttr(cert.date || "")}" placeholder="Date" style="${ONB_LIST_INPUT_STYLE}">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px" class="onb2-two">
+        ${_onbField({ label: "Started", value: r.from, placeholder: "Mar 2022", data: `data-onb-rolefield="from" data-onb-idx="${i}"` })}
+        ${_onbField({ label: "Ended", value: r.current ? "" : r.to, placeholder: "Present", locked: r.current, data: `data-onb-rolefield="to" data-onb-idx="${i}"` })}
       </div>
-      <button type="button" class="onb-list-remove" aria-label="Remove" style="${ONB_LIST_REMOVE_STYLE}">×</button>`;
-    row.querySelectorAll("input[data-k]").forEach((inp) => {
-      inp.addEventListener("input", (e) => { cert[e.target.dataset.k] = e.target.value; });
-    });
-    row.querySelector(".onb-list-remove").addEventListener("click", () => {
-      _onbData.certifications.splice(idx, 1);
-      _onbRenderCertificationsList();
-    });
-    container.appendChild(row);
-  });
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <button type="button" data-onb-role-current="${i}" style="display:inline-flex;align-items:center;gap:9px;background:transparent;border:none;cursor:pointer;font:inherit;font-size:13.5px;color:var(--onb2-g700)">
+          <span style="width:18px;height:18px;border-radius:5px;border:1.5px solid ${r.current ? "var(--onb2-accent)" : "var(--onb2-g300)"};background:${r.current ? "var(--onb2-accent)" : "#fff"};display:inline-flex;align-items:center;justify-content:center">${r.current ? _onbI("check", 12, "#fff") : ""}</span>
+          I still work here
+        </button>
+        <button type="button" data-onb-role-remove="${i}" style="background:transparent;border:none;cursor:pointer;font:inherit;font-size:13px;color:var(--onb2-g500);display:inline-flex;align-items:center;gap:6px">${_onbI("trash-2", 14, "#9E9E9E")}Remove</button>
+      </div>
+    </div>` : ""}
+  </div>`;
 }
 
-function _onbBindStep(step) {
-  const back = document.querySelector("#onbBack");
-  const next = document.querySelector("#onbNext");
-  back?.addEventListener("click", () => _onbRender(step - 1));
+function _onbEduCard(e, i) {
+  const open = e.open, cert = e.kind === "cert";
+  const meta = [e.school, e.year].filter(Boolean).join(" · ") || "Add the details";
+  return `<div class="onb2-ecard ${open ? "is-open" : ""}">
+    <div class="onb2-ecard-head">
+      <div class="onb2-ecard-icon">${_onbI(cert ? "award" : "graduation-cap", 17, "#757575")}</div>
+      <div style="flex:1;min-width:0">
+        <div class="onb2-ecard-title">${escapeHtml(e.title || (cert ? "New certification" : "New education"))}</div>
+        <div class="onb2-ecard-meta">${escapeHtml(meta)}</div>
+      </div>
+      <button type="button" class="onb2-ecard-edit" data-onb-edu-edit="${i}">${open ? "Done" : "Edit"}${_onbI(open ? "chevron-up" : "chevron-down", 14, "#10A07C")}</button>
+    </div>
+    ${open ? `<div class="onb2-ecard-body">
+      ${_onbField({ label: cert ? "Certification or course" : "Degree or programme", value: e.title, placeholder: cert ? "Project Management Professional (PMP)" : "BSc Business Administration", data: `data-onb-edufield="title" data-onb-idx="${i}"` })}
+      <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:12px" class="onb2-two">
+        ${_onbField({ label: cert ? "Issued by" : "Institution", value: e.school, placeholder: cert ? "PMI" : "Universidad EAFIT", data: `data-onb-edufield="school" data-onb-idx="${i}"` })}
+        ${_onbField({ label: cert ? "Year earned" : "Year finished", value: e.year, placeholder: "2023", data: `data-onb-edufield="year" data-onb-idx="${i}"` })}
+      </div>
+      <button type="button" data-onb-edu-remove="${i}" style="align-self:flex-start;background:transparent;border:none;cursor:pointer;font:inherit;font-size:13px;color:var(--onb2-g500);display:inline-flex;align-items:center;gap:6px">${_onbI("trash-2", 14, "#9E9E9E")}Remove</button>
+    </div>` : ""}
+  </div>`;
+}
 
-  switch (step) {
+function _onbSkillMeter(n) {
+  const goal = 8;
+  const msg = n === 0 ? "Pick at least 3" : n < 3 ? `${3 - n} more to continue` : n < goal ? `${n} selected · ${goal - n} more unlocks more alerts` : `${n} selected · great coverage`;
+  const col = n >= 3 ? "var(--onb2-accent)" : "#EAB308";
+  return `<span style="display:inline-flex;align-items:center;gap:9px">
+    <span style="width:62px;height:5px;border-radius:999px;background:var(--onb2-g200);overflow:hidden;display:inline-block"><span style="display:block;width:${Math.min(100, (n / goal) * 100)}%;height:100%;background:${col};transition:width 300ms"></span></span>
+    <span style="font-size:11.5px;color:${n >= 3 ? "var(--onb2-g500)" : "#CA8A04"};font-weight:500">${escapeHtml(msg)}</span>
+  </span>`;
+}
 
-    case 1: {
-      const cvInput = document.querySelector("#onbCvInput");
-      const status  = document.querySelector("#onbCvStatus");
-      const skipBtn = document.querySelector("#onbSkipCv");
+function _onbStepExperience() {
+  const d = _onbData;
+  const parsed = !!d.cv;
+  return `<div>
+    ${_onbHead("STEP 03 · EXPERIENCE", "45 SEC", parsed ? (d.first ? `${d.first}, check your history.` : "Check your work history.") : "Add your work history.", parsed ? "Straight from your CV. Confirm the last two roles — that's all companies really read." : "Your two most recent roles are enough to get started.")}
+    ${_onbGroup({ label: "Work history", req: true, body: `<div style="display:flex;flex-direction:column;gap:12px">
+      ${d.roles.map((r, i) => _onbRoleCard(r, i)).join("")}
+      <button type="button" class="onb2-addtile" data-onb-role-add>${_onbI("plus", 16)}Add another role</button>
+    </div>` })}
+    <div style="margin-top:26px">
+      ${_onbGroup({ label: "Education & certifications", hint: parsed ? "Pulled from your CV. Add any course or certificate that isn't listed — a project management course, a Google or HubSpot cert, a bootcamp. They count." : "Degrees, courses, bootcamps and certificates — a project management course counts as much as a degree here.", body: `<div style="display:flex;flex-direction:column;gap:12px">
+        ${d.education.map((e, i) => _onbEduCard(e, i)).join("")}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px" class="onb2-two">
+          <button type="button" class="onb2-addtile" data-onb-edu-add="degree">${_onbI("graduation-cap", 16)}Add education</button>
+          <button type="button" class="onb2-addtile" data-onb-edu-add="cert">${_onbI("award", 16)}Add certification</button>
+        </div>
+      </div>` })}
+    </div>
+    <div style="margin-top:26px">
+      ${_onbGroup({ label: "Your skills", req: true, hint: parsed ? "Add as many as you honestly have — every skill is another job alert we can send you. Tap to remove anything you'd rather not be matched on." : "Add as many as you honestly have. Each one is another job alert we can send you when something opens up.", aside: _onbSkillMeter(d.skills.length), body: _onbChips("skills", [...new Set([...d.skills, ..._ONB_SKILL_POOL])], d.skills, true) })}
+    </div>
+  </div>`;
+}
 
-      // Restore previously selected file display
-      if (_onbCvFile && cvInput) next.disabled = false;
+function _onbSalaryBlock() {
+  const d = _onbData;
+  const band = _onbSalaryBand();
+  const min = Number(d.salaryMin) || 0;
+  const inBand = min >= band[0] - 400 && min <= band[1];
+  const bandStr = `$${band[0].toLocaleString("en-US")}–$${band[1].toLocaleString("en-US")}/mo`;
+  const fn = (d.functions && d.functions[0]) || "These";
+  const callout = inBand
+    ? `Similar ${escapeHtml(fn)} profiles are placed at <strong style="color:var(--onb2-black)">${bandStr}</strong>. Your range is right in the market.`
+    : `Heads up: most roles like yours pay <strong style="color:var(--onb2-black)">${bandStr}</strong>. A range outside that will limit your matches.`;
+  return _onbGroup({ label: "Monthly salary expectation (USD)", req: true, hint: "Give a range you'd genuinely accept. Companies filter on this, so a wider range means more matches.", body: `<div style="display:flex;flex-direction:column;gap:12px">
+    <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:end">
+      ${_onbField({ label: "Minimum", prefix: "$", value: d.salaryMin, placeholder: "1,500", data: `data-onb-field="salaryMin" inputmode="numeric"` })}
+      <span style="padding-bottom:14px;color:var(--onb2-g400);font-size:14px">to</span>
+      ${_onbField({ label: "Ideal", prefix: "$", value: d.salaryMax, placeholder: "2,200", data: `data-onb-field="salaryMax" inputmode="numeric"` })}
+    </div>
+    <div id="onb2SalaryCallout" style="display:flex;gap:11px;align-items:flex-start;padding:13px 15px;background:${inBand ? "#F0FDF4" : "#FEFCE8"};border:1px solid ${inBand ? "#DCFCE7" : "#FEF9C3"};border-radius:12px">
+      ${_onbI(inBand ? "trending-up" : "info", 15, inBand ? "#16A34A" : "#CA8A04")}
+      <p style="font-size:12.8px;line-height:1.5;color:var(--onb2-g700);margin:0">${callout}</p>
+    </div>
+  </div>` });
+}
 
-      cvInput?.addEventListener("change", () => {
-        const file = cvInput.files?.[0];
-        if (!file) return;
-        _onbCvFile = file;
-        if (status) status.textContent = `✓ ${file.name}`;
-        next.disabled = false;
-        // Kick off Affinda in background immediately
-        _onbParsed = null;
-        _onbParsePromise = parseCvWithAffinda(file).catch(() => null);
-      });
+function _onbStepPreferences() {
+  const d = _onbData;
+  return `<div>
+    ${_onbHead("STEP 04 · WHAT YOU WANT", "45 SEC", d.first ? `Last part, ${d.first}.` : "Last part.", "This decides which roles reach you — and it's the only thing we can't read off a CV.")}
+    <div style="display:flex;flex-direction:column;gap:24px">
+      ${_onbGroup({ label: "Roles you’re open to", req: true, hint: "Pick up to three. You can change this any time.", body: _onbChips("functions", _ONB_FUNCTIONS, d.functions, false) })}
+      ${_onbGroup({ label: "Work type", req: true, body: _onbSegmented("workType", [{ v: "full", label: "Full-time" }, { v: "part", label: "Part-time" }, { v: "contract", label: "Contract" }], d.workType) })}
+      ${_onbGroup({ label: "When can you start?", body: _onbSegmented("availability", [{ v: "now", label: "Right away" }, { v: "2w", label: "In 2 weeks" }, { v: "1m", label: "In a month" }, { v: "look", label: "Just browsing" }], d.availability) })}
+      ${_onbSalaryBlock()}
+      ${_onbGroup({ label: "Anything else worth showing?", hint: "Portfolio, case study or personal site — optional, but it helps for design, marketing and data roles.", body: `<div style="display:flex;flex-direction:column;gap:10px">
+        ${_onbField({ label: "Portfolio or website", prefix: "https://", value: d.portfolio, placeholder: "your-site.com", data: `data-onb-field="portfolio"` })}
+      </div>` })}
+      ${_onbGroup({ label: "How did you hear about Nearwork?", hint: "Optional — it just helps us reach more people like you.", body: `<div style="display:flex;flex-direction:column;gap:10px">
+        ${_onbChips("source", _ONB_SOURCES, d.source ? [d.source] : [], false)}
+        ${d.source === "Other" ? _onbField({ label: "Where exactly?", value: d.sourceOther, placeholder: "A podcast, a university fair, a Slack group…", data: `data-onb-field="sourceOther"` }) : ""}
+      </div>` })}
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <span style="font-size:10.5px;letter-spacing:0.12em;color:var(--onb2-g500)">PERMISSIONS</span>
+          <span style="flex:1;height:1px;background:var(--onb2-g100)"></span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${_onbToggle("shareProfile", "Show my profile to vetted Nearwork companies", "Hiring teams see your experience, skills and salary range — never your phone, email or exact address until you accept an interview.", d.shareProfile, true)}
+          ${_onbToggle("notifyMatches", "Email me when a role matches", "A short note when something fits — roughly once a week, never more than twice.", d.notifyMatches, false)}
+          ${_onbToggle("notifyNews", "Send me interview tips and salary reports", "Our monthly guide to landing US roles from Latin America.", d.notifyNews, false)}
+        </div>
+        <p style="font-size:12.3px;line-height:1.55;color:var(--onb2-g500);margin:14px 0 0">By finishing you agree to the <a href="https://www.nearwork.co/terms" target="_blank" rel="noreferrer" style="color:var(--onb2-accent-ink);font-weight:600">Terms</a> and <a href="https://www.nearwork.co/privacy" target="_blank" rel="noreferrer" style="color:var(--onb2-accent-ink);font-weight:600">Privacy Policy</a>. You can export or delete everything from your settings at any time.</p>
+      </div>
+    </div>
+  </div>`;
+}
 
-      next?.addEventListener("click", () => _onbAwaitParse(2));
-      skipBtn?.addEventListener("click", () => { _onbCvFile = null; _onbParsePromise = null; _onbAwaitParse(2); });
-      break;
-    }
+function _onbStepDone() {
+  const d = _onbData;
+  const fn = d.functions.length ? escapeHtml(d.functions[0]) : "New";
+  const cards = [
+    { icon: "clipboard-check", title: "Take your 12-minute assessment", desc: "One short skills + working-style check. Profiles with it get 3× more interviews.", cta: "Start now", act: "assessment" },
+    { icon: "search", title: "See who’s hiring right now", desc: `${fn} roles inside your salary range are live today.`, cta: "See roles", act: "jobs" },
+  ];
+  return `<div style="max-width:560px">
+    <canvas class="onb2-confetti" id="onb2Confetti"></canvas>
+    <div class="onb2-done-badge">${_onbI("check", 28, "#fff")}</div>
+    <h1 class="onb2-title" style="font-size:clamp(28px,3.2vw,36px)">You're in, ${d.first ? escapeHtml(d.first) : "there"}.</h1>
+    <p style="font-size:15.5px;line-height:1.55;color:var(--onb2-g600);margin:12px 0 0">Your profile is live with our matching team. Most candidates hear about their first role within 10 days.</p>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:30px">
+      ${cards.map((n) => `<div style="display:flex;gap:14px;align-items:center;background:#fff;border:1.5px solid var(--onb2-g200);border-radius:14px;padding:16px 17px">
+        <div style="width:38px;height:38px;border-radius:11px;background:var(--onb2-accent-bg);border:1px solid var(--onb2-accent-border);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">${_onbI(n.icon, 17, "#10A07C")}</div>
+        <div style="flex:1"><div style="font-size:14.5px;font-weight:600;color:var(--onb2-black);letter-spacing:-0.01em">${escapeHtml(n.title)}</div><div style="font-size:12.8px;color:var(--onb2-g600);margin-top:3px;line-height:1.45">${escapeHtml(n.desc)}</div></div>
+        <button type="button" class="onb2-btn onb2-btn-soft is-sm" data-onb-done-act="${n.act}">${escapeHtml(n.cta)}${_onbI("arrow-right", 17, "#10A07C")}</button>
+      </div>`).join("")}
+    </div>
+    <div style="display:flex;gap:12px;align-items:center;margin-top:28px;padding-top:22px;border-top:1px solid var(--onb2-g100);flex-wrap:wrap">
+      <button type="button" class="onb2-btn onb2-btn-primary" data-onb-done-act="dashboard">Go to my dashboard${_onbI("arrow-right", 17, "#fff")}</button>
+      <button type="button" class="onb2-btn onb2-btn-ghost" data-onb-done-act="jobs">${_onbI("search", 17, "#555555")}Browse jobs</button>
+    </div>
+  </div>`;
+}
 
-    case 2: {
-      next?.addEventListener("click", () => {
-        const firstName   = document.querySelector("#onbFirstName")?.value.trim() || "";
-        const lastName    = document.querySelector("#onbLastName")?.value.trim() || "";
-        const phone       = document.querySelector("#onbPhone")?.value.trim() || "";
-        const currentRole = document.querySelector("#onbCurrentRole")?.value.trim() || "";
-        const usd         = document.querySelector("#onbSalaryUSD")?.value || "";
-        const cop         = document.querySelector("#onbSalaryCOP")?.value || "";
-        const linkedin    = document.querySelector("#onbLinkedin")?.value.trim() || "";
-        const errEl       = document.querySelector("#onbBasicError");
-        if (!firstName || !lastName || !phone || !currentRole) {
-          if (errEl) errEl.textContent = "Please fill in your name, phone, and current role.";
-          return;
-        }
-        if (!usd && !cop) {
-          if (errEl) errEl.textContent = "Please enter an expected salary in USD, COP, or both.";
-          return;
-        }
-        _onbData.firstName         = properName(firstName);
-        _onbData.lastName          = properName(lastName);
-        _onbData.phone             = phone;
-        _onbData.currentRole       = currentRole;
-        _onbData.expectedSalaryUSD = usd ? salaryNumberFromInput(usd) : "";
-        _onbData.expectedSalaryCOP = cop ? salaryNumberFromInput(cop) : "";
-        _onbData.linkedin          = linkedin;
-        _onbRender(3);
-      });
-      break;
-    }
+// ── CV parsing (reuses the existing Affinda flow) ─────────────────────────────
+function _onbStopParse() { if (_onbParseTimer) { clearInterval(_onbParseTimer); _onbParseTimer = null; } }
 
-    case 3: {
-      const rgSel   = document.querySelector("#onbRoleGroup");
-      const roleSel = document.querySelector("#onbTargetRole");
-      const countrySel = document.querySelector("#onbCountry");
-      const deptSel = document.querySelector("#onbDept");
-      const citySel = document.querySelector("#onbCity");
-      const coLoc   = document.querySelector("#onbCoLoc");
-      const coHint  = document.querySelector("#onbCoHint");
-      rgSel?.addEventListener("change", () => {
-        roleSel.innerHTML = roleOptionsForGroup(rgSel.value, "");
-      });
-      // Colombia keeps department + city; any other country needs only the country.
-      countrySel?.addEventListener("change", () => {
-        const isCo = countrySel.value === "Colombia";
-        if (coLoc)  coLoc.style.display  = isCo ? "grid" : "none";
-        if (coHint) coHint.style.display = isCo ? "none" : "block";
-      });
-      deptSel?.addEventListener("change", () => {
-        const cities = colombiaLocations[deptSel.value] || [];
-        citySel.innerHTML = cities.map((c) => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join("");
-      });
-      next?.addEventListener("click", () => {
-        _onbData.roleGroup  = rgSel?.value  || "";
-        _onbData.targetRole = roleSel?.value || "";
-        _onbData.country    = countrySel?.value || "Colombia";
-        const isCo = _onbData.country === "Colombia";
-        _onbData.department = isCo ? (deptSel?.value || "") : "";
-        _onbData.city       = isCo ? (citySel?.value || "") : "";
-        _onbData.english    = document.querySelector("#onbEnglish")?.value || "";
-        _onbAwaitParse(4);
-      });
-      break;
-    }
+function _onbStartParse(file) {
+  const okType = /\.(pdf|docx?)$/i.test(file.name) || ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"].includes(file.type);
+  if (!okType) { alert("Please upload a PDF, DOC or DOCX file."); return; }
+  if (file.size > 10 * 1024 * 1024) { alert("That file is larger than 10 MB. Please upload a smaller CV."); return; }
+  _onbCvFile = file;
+  _onbData.cv = file.name;
+  // Upload the file to Firebase Storage immediately so it's viewable in the App
+  // and Admin right away — even if the candidate never finishes onboarding.
+  // uploadCandidateCv writes cvUrl to both users/{uid} and candidates/{code}.
+  _onbCvUploaded = null;
+  const _cvUid = state.user?.uid;
+  if (_cvUid && hasFirebaseConfig) {
+    uploadCandidateCv(_cvUid, file, "").then((cv) => { _onbCvUploaded = cv; }).catch(() => {});
+  }
+  _onbParsed = null;
+  _onbParseStage = "parsing";
+  _onbParseFound = 0;
+  _onbStopParse();
+  // Affinda returns a single result; animate the rail card up to 3 while it runs,
+  // then snap to 4 (imported) on resolve.
+  _onbParseTimer = setInterval(() => { if (_onbParseFound < 3) { _onbParseFound++; _onbRefreshParseUi(); } }, 800);
+  _onbRender(0); // show the file card + enable Continue immediately
+  _onbParsePromise = parseCvWithAffinda(file)
+    .then((res) => { _onbParsed = res; _onbMergeParsed(res); })
+    .catch(() => {})
+    .finally(() => { _onbStopParse(); _onbParseFound = 4; _onbParseStage = "done"; _onbAfterParse(); });
+  _onbScheduleSave();
+}
 
-    case 4: {
-      document.querySelector("#onbEdit")?.addEventListener("click", () => _onbRender(1));
-      document.querySelector("#onbFinish")?.addEventListener("click", _onbFinish);
-      _onbRenderExperienceList();
-      _onbRenderLanguagesList();
-      _onbRenderCertificationsList();
-      document.querySelector("#onbAddExperience")?.addEventListener("click", () => {
-        _onbData.experience.push({ company: "", title: "", from: "", to: "" });
-        _onbRenderExperienceList();
-      });
-      document.querySelector("#onbAddLanguage")?.addEventListener("click", () => {
-        _onbData.languages.push("");
-        _onbRenderLanguagesList();
-      });
-      document.querySelector("#onbAddCertification")?.addEventListener("click", () => {
-        _onbData.certifications.push({ name: "", issuer: "", date: "" });
-        _onbRenderCertificationsList();
-      });
-      bindSkillSearch();
-      break;
-    }
+function _onbMergeParsed(res) {
+  if (!res) return;
+  const d = _onbData;
+  const flags = d._cvFlags || (d._cvFlags = {});
+  if (res.name && !d.first && !d.last) {
+    const p = String(res.name).trim().split(/\s+/).filter(Boolean);
+    d.first = properName(p[0] || "");
+    d.last = properName(p.slice(1).join(" "));
+    flags.first = !!d.first; flags.last = !!d.last;
+  }
+  if (res.phone && !d.phone) d.phone = String(res.phone).replace(/^\+?57\s?/, "");
+  if (res.city && !d.city) { d.city = res.city; flags.city = true; }
+  if (Array.isArray(res.workHistory) && res.workHistory.length && !d.roles.length) {
+    d.roles = res.workHistory.slice(0, 6).map((w) => ({ title: w.title || "", company: w.company || "", from: w.from || "", to: (w.to === "present" ? "" : w.to) || "", current: w.to === "present" || !!w.current, open: false }));
+  }
+  if (Array.isArray(res.skills) && res.skills.length) {
+    d.skills = [...new Set([...d.skills, ...res.skills.map(canonicalSkillName).filter(Boolean)])];
+  }
+  if (Array.isArray(res.certifications) && res.certifications.length && !d.education.length) {
+    d.education = res.certifications.map((c) => ({ kind: "cert", title: c.name || c.title || "", school: c.issuer || "", year: c.date || "", open: false }));
+  }
+  if (res.summary && !d.summary) d.summary = res.summary;
+}
+
+// Re-paint the rail parse card + CV progress bar without touching the form.
+function _onbRefreshParseUi() {
+  const rail = document.querySelector("#onb2Rail");
+  if (rail) {
+    rail.innerHTML = _onbRailHtml();
+    syncIcons();
+    rail.querySelectorAll("[data-onb-nav]").forEach((b) => b.addEventListener("click", () => _onbRender(Number(b.dataset.onbNav))));
+  }
+  const bar = document.querySelector("#onb2CvBar");
+  if (bar) bar.style.width = Math.max(8, Math.round(_onbParseFound / 4 * 100)) + "%";
+  const st = document.querySelector("#onb2CvStatus");
+  if (st) st.textContent = _onbParseStage === "done" ? "Imported" : `Reading (${Math.round(_onbParseFound / 4 * 100)}%)`;
+}
+
+function _onbAfterParse() {
+  if (document.querySelector("#onb2Card")) _onbRender(_onbStep);
+}
+
+// ── Live chrome updates (cheap; keystroke path) ───────────────────────────────
+function _onbChromeUpdate() {
+  const pct = _onbStrength();
+  const p = document.querySelector("#onb2StrengthPct"); if (p) p.textContent = pct + "%";
+  const bar = document.querySelector("#onb2StrengthBar"); if (bar) bar.style.width = pct + "%";
+  const blocker = _onbBlocker(_onbStep);
+  const bwrap = document.querySelector("#onb2Blocker");
+  if (bwrap) { bwrap.innerHTML = blocker ? `<div class="onb2-blocker">${_onbI("info", 14, "#E74C7C")}${escapeHtml(blocker)}</div>` : ""; syncIcons(); }
+  const next = document.querySelector("#onb2Next"); if (next) next.disabled = !!blocker;
+}
+
+function _onbUpdateSalaryCallout() {
+  const el = document.querySelector("#onb2SalaryCallout"); if (!el) return;
+  const band = _onbSalaryBand();
+  const min = Number(_onbData.salaryMin) || 0;
+  const inBand = min >= band[0] - 400 && min <= band[1];
+  const bandStr = `$${band[0].toLocaleString("en-US")}–$${band[1].toLocaleString("en-US")}/mo`;
+  const fn = (_onbData.functions && _onbData.functions[0]) || "These";
+  el.style.background = inBand ? "#F0FDF4" : "#FEFCE8";
+  el.style.border = `1px solid ${inBand ? "#DCFCE7" : "#FEF9C3"}`;
+  el.innerHTML = `${_onbI(inBand ? "trending-up" : "info", 15, inBand ? "#16A34A" : "#CA8A04")}<p style="font-size:12.8px;line-height:1.5;color:var(--onb2-g700);margin:0">${inBand ? `Similar ${escapeHtml(fn)} profiles are placed at <strong style="color:var(--onb2-black)">${bandStr}</strong>. Your range is right in the market.` : `Heads up: most roles like yours pay <strong style="color:var(--onb2-black)">${bandStr}</strong>. A range outside that will limit your matches.`}`;
+  syncIcons();
+}
+
+// ── Bind ──────────────────────────────────────────────────────────────────────
+function _onbBind(step) {
+  document.querySelectorAll("[data-onb-nav]").forEach((b) => b.addEventListener("click", () => _onbRender(Number(b.dataset.onbNav))));
+  document.querySelector("[data-onb-save-exit]")?.addEventListener("click", _onbSaveAndExit);
+  document.querySelector("[data-onb-back]")?.addEventListener("click", () => _onbRender(Math.max(0, step - 1)));
+  document.querySelector("[data-onb-next]")?.addEventListener("click", () => _onbNext(step));
+  document.querySelector("[data-onb-skip]")?.addEventListener("click", () => _onbRender(1));
+
+  // Plain text fields — update in place, refresh chrome, autosave (no card re-render).
+  document.querySelectorAll("[data-onb-field]").forEach((inp) => inp.addEventListener("input", () => {
+    const k = inp.dataset.onbField;
+    let v = inp.value;
+    if (k === "salaryMin" || k === "salaryMax") { v = v.replace(/\D/g, ""); inp.value = v; }
+    _onbData[k] = v;
+    if (k === "salaryMin" || k === "salaryMax") _onbUpdateSalaryCallout();
+    _onbChromeUpdate();
+    _onbScheduleSave();
+  }));
+
+  // Segmented controls.
+  document.querySelectorAll("[data-onb-seg]").forEach((b) => b.addEventListener("click", () => {
+    _onbData[b.dataset.onbSeg] = b.dataset.onbVal;
+    _onbRender(step); _onbScheduleSave();
+  }));
+
+  // Chips (skills / functions / source).
+  const addChip = (g, v) => {
+    if (!v) return;
+    if (g === "skills") { const c = canonicalSkillName(v) || v; if (!_onbData.skills.includes(c)) _onbData.skills.push(c); }
+    else if (!_onbData[g].includes(v)) _onbData[g].push(v);
+  };
+  document.querySelectorAll("[data-onb-chip]").forEach((b) => b.addEventListener("click", () => {
+    const g = b.dataset.onbChip, val = b.dataset.onbVal;
+    if (g === "source") { _onbData.source = _onbData.source === val ? "" : val; if (val !== "Other") _onbData.sourceOther = ""; }
+    else if (g === "functions") { const arr = _onbData.functions; _onbData.functions = arr.includes(val) ? arr.filter((x) => x !== val) : (arr.length >= 3 ? arr : [...arr, val]); }
+    else { const arr = _onbData[g]; _onbData[g] = arr.includes(val) ? arr.filter((x) => x !== val) : [...arr, val]; }
+    _onbRender(step); _onbScheduleSave();
+  }));
+  document.querySelectorAll("[data-onb-chip-add]").forEach((btn) => btn.addEventListener("click", () => {
+    const g = btn.dataset.onbChipAdd;
+    const input = document.querySelector(`[data-onb-chip-input="${g}"]`);
+    addChip(g, (input?.value || "").trim());
+    _onbRender(step); _onbScheduleSave();
+  }));
+  document.querySelectorAll("[data-onb-chip-input]").forEach((input) => input.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    addChip(input.dataset.onbChipInput, input.value.trim());
+    _onbRender(step); _onbScheduleSave();
+  }));
+
+  // Permission toggles.
+  document.querySelectorAll("[data-onb-toggle]").forEach((t) => t.addEventListener("click", () => {
+    if (t.dataset.onbRequired) return;
+    const k = t.dataset.onbToggle;
+    _onbData[k] = !_onbData[k];
+    _onbRender(step); _onbScheduleSave();
+  }));
+
+  // Role cards.
+  document.querySelectorAll("[data-onb-rolefield]").forEach((inp) => inp.addEventListener("input", () => {
+    _onbData.roles[Number(inp.dataset.onbIdx)][inp.dataset.onbRolefield] = inp.value;
+    _onbChromeUpdate(); _onbScheduleSave();
+  }));
+  document.querySelector("[data-onb-role-add]")?.addEventListener("click", () => { _onbData.roles.push({ title: "", company: "", from: "", to: "", current: false, open: true }); _onbRender(step); _onbScheduleSave(); });
+  document.querySelectorAll("[data-onb-role-edit]").forEach((b) => b.addEventListener("click", () => { const i = Number(b.dataset.onbRoleEdit); _onbData.roles[i].open = !_onbData.roles[i].open; _onbRender(step); }));
+  document.querySelectorAll("[data-onb-role-remove]").forEach((b) => b.addEventListener("click", () => { _onbData.roles.splice(Number(b.dataset.onbRoleRemove), 1); _onbRender(step); _onbScheduleSave(); }));
+  document.querySelectorAll("[data-onb-role-current]").forEach((b) => b.addEventListener("click", () => { const i = Number(b.dataset.onbRoleCurrent); _onbData.roles[i].current = !_onbData.roles[i].current; if (_onbData.roles[i].current) _onbData.roles[i].to = ""; _onbRender(step); _onbScheduleSave(); }));
+
+  // Education / certification cards.
+  document.querySelectorAll("[data-onb-edufield]").forEach((inp) => inp.addEventListener("input", () => {
+    _onbData.education[Number(inp.dataset.onbIdx)][inp.dataset.onbEdufield] = inp.value;
+    _onbChromeUpdate(); _onbScheduleSave();
+  }));
+  document.querySelectorAll("[data-onb-edu-add]").forEach((b) => b.addEventListener("click", () => { _onbData.education.push({ kind: b.dataset.onbEduAdd, title: "", school: "", year: "", open: true }); _onbRender(step); _onbScheduleSave(); }));
+  document.querySelectorAll("[data-onb-edu-edit]").forEach((b) => b.addEventListener("click", () => { const i = Number(b.dataset.onbEduEdit); _onbData.education[i].open = !_onbData.education[i].open; _onbRender(step); }));
+  document.querySelectorAll("[data-onb-edu-remove]").forEach((b) => b.addEventListener("click", () => { _onbData.education.splice(Number(b.dataset.onbEduRemove), 1); _onbRender(step); _onbScheduleSave(); }));
+
+  // Attachments (real file names captured; not uploaded — see report note).
+  const fileInput = document.querySelector("#onb2FileInput");
+  document.querySelector("[data-onb-file-add]")?.addEventListener("click", () => fileInput?.click());
+  fileInput?.addEventListener("change", () => { [...(fileInput.files || [])].forEach((f) => { if (!_onbData.files.includes(f.name)) _onbData.files.push(f.name); }); _onbRender(step); _onbScheduleSave(); });
+  document.querySelectorAll("[data-onb-file-remove]").forEach((b) => b.addEventListener("click", () => { _onbData.files = _onbData.files.filter((x) => x !== b.dataset.onbFileRemove); _onbRender(step); _onbScheduleSave(); }));
+
+  if (step === 0) {
+    const dz = document.querySelector("#onb2Dropzone");
+    const cvInput = document.querySelector("#onb2CvInput");
+    dz?.addEventListener("click", () => cvInput?.click());
+    dz?.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("is-drag"); });
+    dz?.addEventListener("dragleave", () => dz.classList.remove("is-drag"));
+    dz?.addEventListener("drop", (e) => { e.preventDefault(); dz.classList.remove("is-drag"); const f = e.dataTransfer?.files?.[0]; if (f) _onbStartParse(f); });
+    cvInput?.addEventListener("change", () => { const f = cvInput.files?.[0]; if (f) _onbStartParse(f); });
+    document.querySelector("[data-onb-cv-remove]")?.addEventListener("click", () => { _onbStopParse(); _onbCvFile = null; _onbCvUploaded = null; _onbParsed = null; _onbData.cv = null; _onbParseStage = "idle"; _onbParseFound = 0; _onbRender(0); _onbScheduleSave(); });
+    document.querySelector("[data-onb-manual]")?.addEventListener("click", () => _onbRender(1));
+  }
+
+  if (step === 4) {
+    document.querySelectorAll("[data-onb-done-act]").forEach((b) => b.addEventListener("click", () => {
+      const act = b.dataset.onbDoneAct;
+      if (act === "dashboard") { window.history.pushState({ page: "overview" }, "", "/"); setState({ activePage: "overview", message: "" }); }
+      else if (act === "assessment") { window.history.pushState({ page: "assessment" }, "", "/assessment"); setState({ activePage: "assessment", message: "" }); }
+      else if (act === "jobs") { window.open("https://www.nearwork.co/jobs", "_blank", "noreferrer"); }
+    }));
   }
 }
 
-async function _onbAwaitParse(step) {
-  const el = document.querySelector("#onboardingWizard");
-  // Show "Analysing…" while we wait for Affinda if it's still in flight
-  if (_onbParsePromise && !_onbParsed) {
-    if (el) el.innerHTML = `<div class="onb-step"><p style="text-align:center;font-size:14px;font-weight:600;color:var(--green);padding:56px 0;">Analysing your CV…</p></div>`;
-    _onbParsed = await _onbParsePromise;
-  }
-  // Merge Affinda data that wasn't explicitly entered yet
-  if (_onbParsed?.phone && !_onbData.phone) _onbData.phone = _onbParsed.phone;
-  if (_onbParsed?.name && !_onbData.firstName && !_onbData.lastName) {
-    const parts = String(_onbParsed.name).trim().split(/\s+/).filter(Boolean);
-    _onbData.firstName = parts[0] || "";
-    _onbData.lastName  = parts.slice(1).join(" ");
-  }
-  if (_onbParsed?.workHistory?.[0]?.title && !_onbData.currentRole) {
-    _onbData.currentRole = _onbParsed.workHistory[0].title;
-  }
-  _onbRender(step);
+function _onbNext(step) {
+  if (_onbBlocker(step)) return;
+  if (step < 3) { _onbRender(step + 1); return; }
+  if (step === 3) { _onbFinish(); }
+}
+
+// ── Persist: mapping design fields onto the existing ATS/profile shape ────────
+function _onbBuildProfile(finishing) {
+  const d = _onbData;
+  const first = properName(d.first || "");
+  const last = properName(d.last || "");
+  const name = [first, last].filter(Boolean).join(" ") || state.candidate?.name || state.user?.displayName || "";
+  const cityParts = String(d.city || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const cityOnly = cityParts[0] || "";
+  const countryFromCity = cityParts.length > 1 ? cityParts[cityParts.length - 1] : "";
+  const country = countryFromCity || state.candidate?.locationCountry || "Colombia";
+  const min = Number(d.salaryMin) || null;
+  const max = Number(d.salaryMax) || null;
+  const salaryLabel = (min && max) ? `$${min.toLocaleString("en-US")}–$${max.toLocaleString("en-US")} USD/mo` : (min ? `$${min.toLocaleString("en-US")} USD/mo` : "");
+  const phone = d.phone ? (String(d.phone).trim().startsWith("+") ? String(d.phone).trim() : `+57 ${String(d.phone).trim()}`) : "";
+  const linkedin = d.linkedin ? (/^https?:\/\//i.test(d.linkedin) ? d.linkedin : `https://linkedin.com/in/${String(d.linkedin).replace(/^\/+/, "")}`) : "";
+  const portfolio = d.portfolio ? (/^https?:\/\//i.test(d.portfolio) ? d.portfolio : `https://${d.portfolio}`) : "";
+  const roles = (d.roles || []).filter((r) => r.title || r.company).map((r) => ({ title: r.title || "", company: r.company || "", from: r.from || "", to: r.current ? "present" : (r.to || ""), current: !!r.current }));
+  const certs = (d.education || []).filter((e) => e.kind === "cert" && (e.title || e.school)).map((e) => ({ name: e.title || "", issuer: e.school || "", date: e.year || "" }));
+  const degrees = (d.education || []).filter((e) => e.kind === "degree" && (e.title || e.school)).map((e) => ({ degree: e.title || "", institution: e.school || "", year: e.year || "" }));
+  const skills = [...new Set((d.skills || []).map(canonicalSkillName).filter(Boolean))];
+  const targetRole = d.functions[0] || state.candidate?.targetRole || "";
+  const currentRole = (roles.find((r) => r.current) || roles[0])?.title || "";
+  const out = {
+    name,
+    firstName: first,
+    lastName: last,
+    targetRole,
+    headline: targetRole || state.candidate?.headline || "Nearwork candidate",
+    currentRole,
+    location: d.city || "",
+    locationCity: cityOnly,
+    city: cityOnly,
+    locationCountry: country,
+    english: _ONB_ENG_SAVE[d.english] || d.english || "",
+    englishLevel: d.english || "",
+    salary: salaryLabel,
+    salaryUSD: min,
+    salaryAmount: min,
+    salaryCurrency: "USD",
+    expectedSalaryUSD: min,
+    expectedSalaryAmount: min,
+    expectedSalaryCurrency: "USD",
+    expectedSalaryMinUSD: min,
+    expectedSalaryMaxUSD: max,
+    expectedSalary: salaryLabel,
+    whatsapp: phone,
+    phone,
+    linkedin,
+    skills,
+    workHistory: roles,
+    certifications: certs,
+    education: degrees,
+    functions: [...d.functions],
+    workType: d.workType || "",
+    startAvailability: d.availability || "",
+    availability: state.candidate?.availability || "open",
+    portfolio,
+    attachments: [...d.files],
+    source: d.source || "",
+    sourceOther: d.sourceOther || "",
+    shareProfile: !!d.shareProfile,
+    notifyMatches: !!d.notifyMatches,
+    notifyNews: !!d.notifyNews,
+    marketingConsent: d.notifyNews === true || state.candidate?.marketingConsent === true,
+    summary: d.summary || state.candidate?.summary || "",
+    profile_strength: _onbStrength(finishing),
+    email: state.candidate?.email || state.user?.email || "",
+    candidateCode: state.candidate?.candidateCode,
+  };
+  if (finishing) out.onboarded = true;
+  return out;
+}
+
+function _onbScheduleSave() {
+  if (_onbAutosaveTimer) clearTimeout(_onbAutosaveTimer);
+  _onbAutosaveTimer = setTimeout(() => { _onbAutosaveTimer = null; _onbAutosave(); }, 600);
+}
+
+async function _onbAutosave() {
+  const uid = state.user?.uid;
+  if (!uid || !hasFirebaseConfig) return;
+  try { await updateCandidateProfile(uid, _onbBuildProfile(false)); } catch (e) { /* silent — best-effort */ }
+}
+
+async function _onbSaveAndExit() {
+  const uid = state.user?.uid;
+  if (_onbAutosaveTimer) { clearTimeout(_onbAutosaveTimer); _onbAutosaveTimer = null; }
+  if (uid && hasFirebaseConfig) { try { await updateCandidateProfile(uid, _onbBuildProfile(false)); } catch (e) { /* ignore */ } }
+  window.history.pushState({ page: "overview" }, "", "/");
+  setState({ activePage: "overview", message: "Saved. You can finish your profile any time." });
 }
 
 async function _onbFinish() {
-  const finishBtn = document.querySelector("#onbFinish");
-  const errEl     = document.querySelector("#onbFinishErr");
-  if (finishBtn) { finishBtn.disabled = true; finishBtn.innerHTML = "Saving…"; }
-
+  const btn = document.querySelector("#onb2Next");
+  if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
   try {
-    const d   = _onbData;
     const uid = state.user?.uid;
     if (!uid) throw new Error("Not signed in");
-
-    const country = d.country || "Colombia";
-    const isCo = country === "Colombia";
-    const dept = isCo ? (d.department || "") : "";
-    const city = isCo ? (d.city || "") : "";
-    const countrySlug = String(country).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    const usdVal = Number(d.expectedSalaryUSD || 0) || null;
-    const copVal = Number(d.expectedSalaryCOP || 0) || null;
-    const primaryAmount   = usdVal || copVal || null;
-    const primaryCurrency = usdVal ? "USD" : (copVal ? "COP" : "USD");
-    const salaryLabel = primaryAmount ? `${primaryCurrency} ${primaryAmount.toLocaleString()}/mo` : "";
-    const skills = [...document.querySelectorAll('[data-skill-search] input[name="skills"]')].map((el) => el.value);
-    const name = [d.firstName, d.lastName].filter(Boolean).join(" ") || state.candidate?.name || state.user?.displayName || "";
-
-    // Upload CV (non-blocking — failure doesn't stop save)
+    if (_onbAutosaveTimer) { clearTimeout(_onbAutosaveTimer); _onbAutosaveTimer = null; }
     let cvFields = {};
     if (_onbCvFile) {
       try {
-        const cv = await uploadCandidateCv(uid, _onbCvFile, "");
+        const cv = _onbCvUploaded || await uploadCandidateCv(uid, _onbCvFile, "");
         cvFields = { activeCvId: cv.id, activeCvName: cv.name || cv.fileName, cvUrl: cv.url, cvLibrary: [cv] };
-      } catch { /* ignore */ }
+      } catch { /* CV upload failure shouldn't block finishing */ }
     }
-
-    const profileData = {
-      name,
-      firstName:             d.firstName || "",
-      lastName:              d.lastName || "",
-      targetRole:            d.targetRole || "",
-      headline:              d.targetRole || "",
-      currentRole:           d.currentRole || "",
-      department:            dept,
-      city,
-      location:              isCo ? [city, dept].filter(Boolean).join(", ") : country,
-      locationCity:          city,
-      locationDepartment:    dept,
-      locationCountry:       country,
-      locationId:            isCo
-        ? `${String(city).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-")}-co`
-        : countrySlug,
-      english:               d.english || "",
-      salary:                salaryLabel,
-      salaryUSD:             usdVal,
-      salaryAmount:          primaryAmount,
-      salaryCurrency:        primaryCurrency,
-      expectedSalaryUSD:     usdVal,
-      expectedSalaryCOP:     copVal,
-      expectedSalaryAmount:  primaryAmount,
-      expectedSalaryCurrency:primaryCurrency,
-      whatsapp:              d.phone || "",
-      phone:                 d.phone || "",
-      linkedin:              d.linkedin || "",
-      skills:                [...new Set(skills.map(canonicalSkillName).filter(Boolean))],
-      workHistory:           d.experience || [],
-      certifications:        (d.certifications || []).filter((c) => c.name && c.name.trim()),
-      languages:             (d.languages || []).map((l) => l.trim()).filter(Boolean),
-      summary:               _onbParsed?.summary || "",
-      email:                 state.candidate?.email || state.user?.email || "",
-      candidateCode:         state.candidate?.candidateCode,
-      marketingConsent:      state.candidate?.marketingConsent === true,
-      availability:          "open",
-      onboarded:             true,
-      ...cvFields,
-    };
-
-    await updateCandidateProfile(uid, profileData);
-    window.history.pushState({ page: "overview" }, "", "/");
-    setState({ candidate: { ...state.candidate, ...profileData }, activePage: "overview", message: "Welcome to Nearwork! Your profile is ready." });
-  } catch {
-    if (errEl)     errEl.textContent = "Something went wrong. Please try again.";
-    if (finishBtn) { finishBtn.disabled = false; finishBtn.innerHTML = `${icon("check")} Finish setup`; }
+    const profile = { ..._onbBuildProfile(true), ...cvFields };
+    await updateCandidateProfile(uid, profile);
+    // Update local state without a full re-render (which would rebuild the shell
+    // at step 3); then render the Done step directly.
+    state = { ...state, candidate: { ...state.candidate, ...profile } };
+    _onbRender(4);
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.innerHTML = `Finish and go live${_onbI("arrow-right", 17, "#fff")}`; syncIcons(); }
+    const bwrap = document.querySelector("#onb2Blocker");
+    if (bwrap) { bwrap.innerHTML = `<div class="onb2-blocker">${_onbI("info", 14, "#E74C7C")}Something went wrong saving your profile. Please try again.</div>`; syncIcons(); }
   }
+}
+
+// ── Confetti (canvas-drawn, no library) ───────────────────────────────────────
+function _onbFireConfetti() {
+  if (_onbConfettiDone) return;
+  const cv = document.querySelector("#onb2Confetti");
+  if (!cv) return;
+  _onbConfettiDone = true;
+  const ctx = cv.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const resize = () => { cv.width = cv.clientWidth * dpr; cv.height = cv.clientHeight * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); };
+  resize();
+  const W = () => cv.clientWidth, H = () => cv.clientHeight;
+  const colors = ["#10A07C", "#AF7AC5", "#E74C7C", "#1ABC9C", "#EAB308"];
+  const bits = Array.from({ length: 130 }, () => ({
+    x: W() * (0.15 + Math.random() * 0.7), y: -20 - Math.random() * H() * 0.5,
+    vx: (Math.random() - 0.5) * 2.4, vy: 2 + Math.random() * 3.4,
+    w: 5 + Math.random() * 6, h: 8 + Math.random() * 8,
+    rot: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.22,
+    c: colors[Math.floor(Math.random() * colors.length)],
+  }));
+  let raf, frames = 0;
+  const tick = () => {
+    frames += 1;
+    ctx.clearRect(0, 0, W(), H());
+    bits.forEach((b) => {
+      b.x += b.vx; b.y += b.vy; b.vy += 0.035; b.rot += b.vr;
+      ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.rot);
+      ctx.globalAlpha = Math.max(0, 1 - frames / 300);
+      ctx.fillStyle = b.c; ctx.fillRect(-b.w / 2, -b.h / 2, b.w, b.h);
+      ctx.restore();
+    });
+    if (frames < 300) raf = requestAnimationFrame(tick); else ctx.clearRect(0, 0, W(), H());
+  };
+  tick();
 }
 
 function renderMatches() {
@@ -4465,6 +4819,9 @@ function bindSkillSearch() {
 function render() {
   if (state.loading) return renderLoading();
   if (state.view === "reset-password") return renderResetPassword();
+  // The onboarding wizard is a full-page takeover with its own left rail — it
+  // renders standalone rather than inside the dashboard chrome.
+  if (state.view === "dashboard" && state.activePage === "onboarding") return renderOnboardingApp();
   if (state.view === "dashboard") return renderDashboard();
   renderLogin();
 }
