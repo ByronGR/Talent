@@ -43,6 +43,7 @@ let _pendingCvFile  = null; // CV file held across the setState re-render so sub
 let _onbStep         = 0;
 let _onbData         = {};   // accumulated answers across every step
 let _onbCvFile       = null; // File object selected in step 0
+let _onbCvUploaded   = null; // CV already uploaded to Storage on drop (avoids re-upload at finish)
 let _onbParsePromise = null; // in-flight Affinda request
 let _onbParsed       = null; // resolved Affinda result
 let _onbInitialized  = false; // guards against wiping wizard progress on background re-renders
@@ -2286,13 +2287,8 @@ function _onbStepPreferences() {
       ${_onbGroup({ label: "Work type", req: true, body: _onbSegmented("workType", [{ v: "full", label: "Full-time" }, { v: "part", label: "Part-time" }, { v: "contract", label: "Contract" }], d.workType) })}
       ${_onbGroup({ label: "When can you start?", body: _onbSegmented("availability", [{ v: "now", label: "Right away" }, { v: "2w", label: "In 2 weeks" }, { v: "1m", label: "In a month" }, { v: "look", label: "Just browsing" }], d.availability) })}
       ${_onbSalaryBlock()}
-      ${_onbGroup({ label: "Anything else worth showing?", hint: "Portfolio, case study, certificate, reference letter — optional, but it helps for design, marketing and data roles.", body: `<div style="display:flex;flex-direction:column;gap:10px">
-        ${_onbField({ label: "Portfolio or website", prefix: "https://", value: d.portfolio, placeholder: "camila.design", data: `data-onb-field="portfolio"` })}
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:2px">
-          <input type="file" id="onb2FileInput" multiple style="display:none" />
-          ${d.files.map((fn) => `<span style="display:inline-flex;align-items:center;gap:8px;background:#fff;border:1.5px solid var(--onb2-g200);border-radius:999px;padding:7px 8px 7px 13px;font-size:13px;color:var(--onb2-g700)">${_onbI("paperclip", 13, "#757575")}${escapeHtml(fn)}<button type="button" data-onb-file-remove="${escapeAttr(fn)}" aria-label="Remove file" style="background:transparent;border:none;cursor:pointer;padding:3px;display:inline-flex">${_onbI("x", 13, "#9E9E9E")}</button></span>`).join("")}
-          <button type="button" data-onb-file-add style="display:inline-flex;align-items:center;gap:7px;background:#fff;border:1.5px dashed var(--onb2-g300);border-radius:999px;padding:7px 14px;cursor:pointer;font:inherit;font-size:13px;font-weight:600;color:var(--onb2-g600)">${_onbI("plus", 13, "#757575")}Attach a file</button>
-        </div>
+      ${_onbGroup({ label: "Anything else worth showing?", hint: "Portfolio, case study or personal site — optional, but it helps for design, marketing and data roles.", body: `<div style="display:flex;flex-direction:column;gap:10px">
+        ${_onbField({ label: "Portfolio or website", prefix: "https://", value: d.portfolio, placeholder: "your-site.com", data: `data-onb-field="portfolio"` })}
       </div>` })}
       ${_onbGroup({ label: "How did you hear about Nearwork?", hint: "Optional — it just helps us reach more people like you.", body: `<div style="display:flex;flex-direction:column;gap:10px">
         ${_onbChips("source", _ONB_SOURCES, d.source ? [d.source] : [], false)}
@@ -2349,6 +2345,14 @@ function _onbStartParse(file) {
   if (file.size > 10 * 1024 * 1024) { alert("That file is larger than 10 MB. Please upload a smaller CV."); return; }
   _onbCvFile = file;
   _onbData.cv = file.name;
+  // Upload the file to Firebase Storage immediately so it's viewable in the App
+  // and Admin right away — even if the candidate never finishes onboarding.
+  // uploadCandidateCv writes cvUrl to both users/{uid} and candidates/{code}.
+  _onbCvUploaded = null;
+  const _cvUid = state.user?.uid;
+  if (_cvUid && hasFirebaseConfig) {
+    uploadCandidateCv(_cvUid, file, "").then((cv) => { _onbCvUploaded = cv; }).catch(() => {});
+  }
   _onbParsed = null;
   _onbParseStage = "parsing";
   _onbParseFound = 0;
@@ -2522,7 +2526,7 @@ function _onbBind(step) {
     dz?.addEventListener("dragleave", () => dz.classList.remove("is-drag"));
     dz?.addEventListener("drop", (e) => { e.preventDefault(); dz.classList.remove("is-drag"); const f = e.dataTransfer?.files?.[0]; if (f) _onbStartParse(f); });
     cvInput?.addEventListener("change", () => { const f = cvInput.files?.[0]; if (f) _onbStartParse(f); });
-    document.querySelector("[data-onb-cv-remove]")?.addEventListener("click", () => { _onbStopParse(); _onbCvFile = null; _onbParsed = null; _onbData.cv = null; _onbParseStage = "idle"; _onbParseFound = 0; _onbRender(0); _onbScheduleSave(); });
+    document.querySelector("[data-onb-cv-remove]")?.addEventListener("click", () => { _onbStopParse(); _onbCvFile = null; _onbCvUploaded = null; _onbParsed = null; _onbData.cv = null; _onbParseStage = "idle"; _onbParseFound = 0; _onbRender(0); _onbScheduleSave(); });
     document.querySelector("[data-onb-manual]")?.addEventListener("click", () => _onbRender(1));
   }
 
@@ -2644,7 +2648,7 @@ async function _onbFinish() {
     let cvFields = {};
     if (_onbCvFile) {
       try {
-        const cv = await uploadCandidateCv(uid, _onbCvFile, "");
+        const cv = _onbCvUploaded || await uploadCandidateCv(uid, _onbCvFile, "");
         cvFields = { activeCvId: cv.id, activeCvName: cv.name || cv.fileName, cvUrl: cv.url, cvLibrary: [cv] };
       } catch { /* CV upload failure shouldn't block finishing */ }
     }
