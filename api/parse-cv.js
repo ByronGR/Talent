@@ -112,7 +112,7 @@ export default async function handler(req, res) {
     const d    = json?.data;
 
     if (!d) {
-      return res.status(200).json({ ok: true, name: "", phone: "", city: "", summary: "", skills: [], workHistory: [], languages: [], certifications: [] });
+      return res.status(200).json({ ok: true, name: "", phone: "", city: "", summary: "", skills: [], workHistory: [], languages: [], education: [], certifications: [] });
     }
 
     // Affinda custom workspace uses singular field names: candidateName, phoneNumber, skill, language
@@ -195,8 +195,24 @@ export default async function handler(req, res) {
       .map((l) => cleanSkill(l.raw || l.name || l.rawText || l.value || ""))
       .filter(Boolean);
 
-    // Certifications — check education entries too
-    const rawCerts = d.certifications || d.Certifications || d.education || [];
+    // Education (degrees/schooling) — Affinda `education`, kept SEPARATE from certs.
+    const rawEducation = d.education || d.Education || [];
+    const education = rawEducation
+      .map((e) => {
+        const institution = e.organization || e.institution || e.school || "";
+        const degree = String(
+          (e.accreditation && (e.accreditation.inputStr || e.accreditation.education)) ||
+          e.raw || e.name || e.rawText || e.value || ""
+        ).trim();
+        const rawYear = (e.dates && (e.dates.completionDate || e.dates.endDate)) || e.completionDate || "";
+        const year = rawYear ? String(rawYear).slice(0, 4) : "";
+        return { degree: degree || institution, institution, year };
+      })
+      .filter((e) => e.degree || e.institution);
+
+    // Certifications / courses — Affinda `certifications` ONLY (no education fallback,
+    // so degrees and courses stay distinct).
+    const rawCerts = d.certifications || d.Certifications || [];
     const certifications = rawCerts
       .map((c) => {
         const cname  = cleanSkill(c.raw || c.name || c.rawText || c.value || "");
@@ -206,7 +222,7 @@ export default async function handler(req, res) {
       })
       .filter((c) => c.name);
 
-    return res.status(200).json({ ok: true, name, phone, city, summary, skills, workHistory, languages, certifications });
+    return res.status(200).json({ ok: true, name, phone, city, summary, skills, workHistory, languages, education, certifications });
 
   } catch (e) {
     console.error("[parse-cv] error:", e?.message || String(e));

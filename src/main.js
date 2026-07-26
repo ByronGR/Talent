@@ -2409,8 +2409,17 @@ function _onbMergeParsed(res) {
   if (Array.isArray(res.skills) && res.skills.length) {
     d.skills = [...new Set([...d.skills, ...res.skills.map(canonicalSkillName).filter(Boolean)])];
   }
-  if (Array.isArray(res.certifications) && res.certifications.length && !d.education.length) {
-    d.education = res.certifications.map((c) => ({ kind: "cert", title: c.name || c.title || "", school: c.issuer || "", year: c.date || "", open: false }));
+  if (!d.education.length) {
+    const eduList = [];
+    // Degrees / schooling — kept as their own kind so they render distinctly.
+    if (Array.isArray(res.education)) {
+      res.education.forEach((e) => eduList.push({ kind: "degree", title: e.degree || e.title || e.name || "", school: e.institution || e.school || "", year: e.year || e.date || "", open: false }));
+    }
+    // Courses / certifications — separate kind (award icon), not merged with degrees.
+    if (Array.isArray(res.certifications)) {
+      res.certifications.forEach((c) => eduList.push({ kind: "cert", title: c.name || c.title || "", school: c.issuer || c.school || "", year: c.date || c.year || "", open: false }));
+    }
+    if (eduList.length) d.education = eduList.filter((e) => e.title || e.school);
   }
   if (res.summary && !d.summary) d.summary = res.summary;
 }
