@@ -2390,6 +2390,11 @@ function _onbStepPreferences() {
 function _onbStepDone() {
   const d = _onbData;
   const fn = d.functions.length ? escapeHtml(d.functions[0]) : "New";
+  let _applyRole = null;
+  try { _applyRole = JSON.parse(sessionStorage.getItem("nw_apply_role") || "null"); } catch (e) {}
+  const roleLine = _applyRole && _applyRole.title
+    ? `<div style="display:inline-flex;align-items:center;gap:8px;background:var(--onb2-accent-bg);border:1px solid var(--onb2-accent-border);color:#0E7060;border-radius:999px;padding:8px 15px;font-size:13.5px;font-weight:600;margin-top:16px">${_onbI("check-circle", 16, "#10A07C")} Application sent — ${escapeHtml(_applyRole.title)}</div>`
+    : "";
   const cards = [
     { icon: "clipboard-check", title: "Take your 12-minute assessment", desc: "One short skills + working-style check. Profiles with it get 3× more interviews.", cta: "Start now", act: "assessment" },
     { icon: "search", title: "See who’s hiring right now", desc: `${fn} roles inside your salary range are live today.`, cta: "See roles", act: "jobs" },
@@ -2398,6 +2403,7 @@ function _onbStepDone() {
     <canvas class="onb2-confetti" id="onb2Confetti"></canvas>
     <div class="onb2-done-badge">${_onbI("check", 28, "#fff")}</div>
     <h1 class="onb2-title" style="font-size:clamp(28px,3.2vw,36px)">You're in, ${d.first ? escapeHtml(d.first) : "there"}.</h1>
+    ${roleLine}
     <p style="font-size:15.5px;line-height:1.55;color:var(--onb2-g600);margin:12px 0 0">Your profile is live with our matching team. Most candidates hear about their first role within 10 days.</p>
     <div style="display:flex;flex-direction:column;gap:10px;margin-top:30px">
       ${cards.map((n) => `<div style="display:flex;gap:14px;align-items:center;background:#fff;border:1.5px solid var(--onb2-g200);border-radius:14px;padding:16px 17px">
@@ -5084,6 +5090,13 @@ window.addEventListener("popstate", () => {
 
 // Cross-domain sign-in handoff from jobs.nearwork.co: ?ct=<customToken>
 const _pendingCt = new URLSearchParams(window.location.search).get('ct');
+// Capture the role the candidate applied to (passed from nearwork.co/jobs/apply)
+// BEFORE the ct strip wipes the query, so the onboarding Done step can confirm it.
+try {
+  const _sp = new URLSearchParams(window.location.search);
+  const _rCode = _sp.get('role'), _rTitle = _sp.get('roleTitle');
+  if (_rCode || _rTitle) sessionStorage.setItem('nw_apply_role', JSON.stringify({ code: _rCode || '', title: _rTitle || _rCode || '' }));
+} catch (e) {}
 if (_pendingCt) window.history.replaceState({}, '', window.location.pathname);
 let _ctPending = Boolean(_pendingCt);
 
