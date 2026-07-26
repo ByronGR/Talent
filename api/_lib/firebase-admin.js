@@ -113,6 +113,12 @@ function adminApp() {
       credential: wif,
       projectId: process.env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID,
       storageBucket: process.env.FIREBASE_STORAGE_BUCKET || DEFAULT_STORAGE_BUCKET,
+      // WIF has no private key, so createCustomToken() must sign via the IAM
+      // Credentials API (signBlob). firebase-admin needs to know which service
+      // account to sign as — without this it throws "Failed to determine
+      // service account". Requires the SA to have Service Account Token Creator
+      // on itself.
+      serviceAccountId: process.env.FIREBASE_SA_EMAIL || DEFAULT_SA_EMAIL,
     });
     return cachedApp;
   }
