@@ -2034,7 +2034,7 @@ function _onbBlocker(step) {
   const d = _onbData;
   if (step === 1) return (!d.first || !d.last) ? "Add your first and last name to continue." : !d.phone ? "Add a phone number so companies can schedule interviews." : !d.city ? "Let us know where you’re based." : null;
   if (step === 2) return !_onbFilledRoles().length ? "Add at least one role — job title and company." : d.skills.length < 3 ? "Pick at least 3 skills so we can match you (more is better)." : null;
-  if (step === 3) return !d.functions.length ? "Pick at least one type of role you’re open to." : (!Number(d.salaryMin) || !Number(d.salaryMax)) ? "Add your salary range — companies filter on it." : !d.shareProfile ? "We need permission to show your profile to companies." : null;
+  if (step === 3) return !d.functions.length ? "Pick at least one type of role you’re open to." : (!Number(d.salaryMin) || !Number(d.salaryMax)) ? "Add your salary range — companies filter on it." : null;
   return null;
 }
 
@@ -2320,7 +2320,7 @@ function _onbStepPreferences() {
           <span style="flex:1;height:1px;background:var(--onb2-g100)"></span>
         </div>
         <div style="display:flex;flex-direction:column;gap:10px">
-          ${_onbToggle("shareProfile", "Show my profile to vetted Nearwork companies", "Hiring teams see your experience, skills and salary range — never your phone, email or exact address until you accept an interview.", d.shareProfile, true)}
+          ${_onbToggle("shareProfile", "Show my profile to vetted Nearwork companies", "Hiring teams see your experience, skills and salary range — never your phone, email or exact address until you accept an interview.", d.shareProfile, false)}
           ${_onbToggle("notifyMatches", "Email me when a role matches", "A short note when something fits — roughly once a week, never more than twice.", d.notifyMatches, false)}
           ${_onbToggle("notifyNews", "Send me interview tips and salary reports", "Our monthly guide to landing US roles from Latin America.", d.notifyNews, false)}
         </div>

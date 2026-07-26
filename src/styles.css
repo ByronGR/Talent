@@ -5954,7 +5954,7 @@ textarea:focus {
 .onb2-fieldbox:focus-within { background: #fff; border-color: var(--onb2-accent); box-shadow: 0 0 0 4px var(--onb2-accent-ring); }
 .onb2-fieldbox.is-locked { background: var(--onb2-g50); }
 .onb2-prefix { font-size: 14.5px; color: var(--onb2-g500); padding-right: 9px; border-right: 1px solid var(--onb2-g200); margin-right: 11px; white-space: nowrap; }
-.onb2-input { flex: 1; border: none; outline: none; background: transparent; font: inherit; font-size: 15px; color: var(--onb2-black); padding: 12px 0; letter-spacing: -0.01em; min-width: 0; }
+.onb2-input { flex: 1; border: none; outline: none; background: transparent; font: inherit; font-size: 15px; font-weight: 400; color: var(--onb2-black); padding: 12px 0; letter-spacing: -0.01em; min-width: 0; }
 .onb2-input:disabled { color: var(--onb2-g600); }
 textarea.onb2-input { padding: 13px 0; resize: none; }
 .onb2-fieldhint { font-size: 12.5px; color: var(--onb2-g500); margin-top: 6px; line-height: 1.45; }
@@ -5970,7 +5970,7 @@ textarea.onb2-input { padding: 13px 0; resize: none; }
 .onb2-chip { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font: inherit; font-size: 13.5px; font-weight: 500; padding: 8px 13px; border-radius: 999px; transition: all 150ms; background: #fff; border: 1.5px solid var(--onb2-g200); color: var(--onb2-g600); }
 .onb2-chip.is-on { background: var(--onb2-accent-bg); border-color: var(--onb2-accent); color: var(--onb2-accent-ink); font-weight: 600; }
 .onb2-chip-add { display: inline-flex; align-items: center; background: #fff; border: 1.5px dashed var(--onb2-g300); border-radius: 999px; padding: 0 6px 0 13px; }
-.onb2-chip-add input { border: none; outline: none; background: transparent; font: inherit; font-size: 13.5px; color: var(--onb2-black); padding: 8px 0; width: 108px; }
+.onb2-chip-add input { border: none; outline: none; background: transparent; font: inherit; font-size: 13.5px; font-weight: 400; color: var(--onb2-black); padding: 8px 0; width: 108px; }
 .onb2-chip-add button { border: none; background: transparent; cursor: pointer; padding: 6px; display: inline-flex; }
 
 .onb2-toggle { display: flex; gap: 14px; align-items: flex-start; padding: 15px 16px; border-radius: 12px; border: 1.5px solid var(--onb2-g200); background: #fff; cursor: pointer; transition: all 150ms; }
