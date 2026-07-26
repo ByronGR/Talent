@@ -2187,13 +2187,67 @@ function _onbStepAbout() {
   </div>`;
 }
 
+// Best-effort company logos for role cards. Keyless: Clearbit suggest (name → domain),
+// then DuckDuckGo icon service (domain → image). Cached per company; failures keep initials.
+// Cache values: string domain, null (no match / negative), or a pending Promise<string|null>.
+const _onbLogoCache = new Map();
+
+function _onbLookupCompanyDomain(company) {
+  const key = company.trim().toLowerCase();
+  if (!key) return Promise.resolve(null);
+  if (_onbLogoCache.has(key)) {
+    const cached = _onbLogoCache.get(key);
+    return cached instanceof Promise ? cached : Promise.resolve(cached);
+  }
+  const p = fetch(`https://autocomplete.clearbit.com/v1/companies/suggest?query=${encodeURIComponent(company)}`)
+    .then((res) => (res.ok ? res.json() : []))
+    .then((arr) => {
+      const domain = Array.isArray(arr) && arr[0] && arr[0].domain ? arr[0].domain : null;
+      _onbLogoCache.set(key, domain); // cache positive AND negative results
+      return domain;
+    })
+    .catch(() => {
+      _onbLogoCache.set(key, null); // cache negative on failure
+      return null;
+    });
+  _onbLogoCache.set(key, p);
+  return p;
+}
+
+// After the Experience step renders, fetch a logo for each role's company and inject
+// it into the icon box. Initials render immediately; the logo layers in when it resolves.
+function _onbInitRoleLogos() {
+  const boxes = document.querySelectorAll("[data-onb-rolelogo]");
+  boxes.forEach((box) => {
+    const i = Number(box.dataset.onbRolelogo);
+    const company = (_onbData.roles[i] && _onbData.roles[i].company || "").trim();
+    if (!company) return;
+    _onbLookupCompanyDomain(company).then((domain) => {
+      if (!domain) return;
+      // Guard against re-render / stale nodes: only inject if this box is still in the DOM,
+      // still maps to the same company, and doesn't already have a logo img.
+      if (!box.isConnected) return;
+      const current = (_onbData.roles[i] && _onbData.roles[i].company || "").trim().toLowerCase();
+      if (current !== company.toLowerCase()) return;
+      if (box.querySelector("img[data-onb-logo-img]")) return;
+      const img = document.createElement("img");
+      img.dataset.onbLogoImg = "1";
+      img.alt = "";
+      img.style.cssText = "width:100%;height:100%;object-fit:contain;border-radius:8px;background:#fff;";
+      img.onerror = () => img.remove(); // revert to initials on load failure
+      img.src = `https://icons.duckduckgo.com/ip3/${domain}.ico`;
+      box.appendChild(img);
+    }).catch(() => { /* keep initials */ });
+  });
+}
+
 function _onbRoleCard(r, i) {
   const open = r.open;
   const initials = (r.company || "?").slice(0, 2).toUpperCase();
   const meta = [r.company, r.from && `${r.from} – ${r.current ? "Present" : (r.to || "")}`].filter(Boolean).join(" · ") || "Add the details";
   return `<div class="onb2-ecard ${open ? "is-open" : ""}">
     <div class="onb2-ecard-head">
-      <div class="onb2-ecard-icon">${escapeHtml(initials)}</div>
+      <div class="onb2-ecard-icon" data-onb-rolelogo="${i}">${escapeHtml(initials)}</div>
       <div style="flex:1;min-width:0">
         <div class="onb2-ecard-title">${escapeHtml(r.title || "New role")}</div>
         <div class="onb2-ecard-meta">${escapeHtml(meta)}</div>
@@ -2678,6 +2732,9 @@ function _onbBind(step) {
   document.querySelectorAll("[data-onb-role-edit]").forEach((b) => b.addEventListener("click", () => { const i = Number(b.dataset.onbRoleEdit); _onbData.roles[i].open = !_onbData.roles[i].open; _onbRender(step); }));
   document.querySelectorAll("[data-onb-role-remove]").forEach((b) => b.addEventListener("click", () => { _onbData.roles.splice(Number(b.dataset.onbRoleRemove), 1); _onbRender(step); _onbScheduleSave(); }));
   document.querySelectorAll("[data-onb-role-current]").forEach((b) => b.addEventListener("click", () => { const i = Number(b.dataset.onbRoleCurrent); _onbData.roles[i].current = !_onbData.roles[i].current; if (_onbData.roles[i].current) _onbData.roles[i].to = ""; _onbRender(step); _onbScheduleSave(); }));
+
+  // Best-effort company logos on the Experience step's role cards (async, non-blocking).
+  if (step === 2) _onbInitRoleLogos();
 
   // Education / certification cards.
   document.querySelectorAll("[data-onb-edufield]").forEach((inp) => inp.addEventListener("input", () => {
