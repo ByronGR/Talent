@@ -8,7 +8,9 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   updateProfile,
-  verifyPasswordResetCode
+  verifyPasswordResetCode,
+  GoogleAuthProvider,
+  signInWithPopup
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import {
   addDoc,
@@ -51,6 +53,17 @@ const hasFirebaseConfig = Object.values(firebaseConfig)
 
 const app = hasFirebaseConfig ? initializeApp(firebaseConfig) : null;
 const auth = app ? getAuth(app) : null;
+const googleProvider = app ? new GoogleAuthProvider() : null;
+if (googleProvider) googleProvider.setCustomParameters({ prompt: "select_account" });
+
+// Sign in (or up) a candidate with Google. onAuthStateChanged then loads/creates
+// their dashboard. Mirrors the Google sign-in on nearwork.co/jobs/apply so a
+// candidate who created their account with Google can log back in here.
+async function signInWithGoogle() {
+  if (!auth || !googleProvider) throw new Error("Authentication is not configured.");
+  const result = await signInWithPopup(auth, googleProvider);
+  return result.user;
+}
 const db = app ? getFirestore(app) : null;
 const storage = app ? getStorage(app) : null;
 
@@ -722,6 +735,7 @@ export {
   requestPasswordReset,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
+  signInWithGoogle,
   signOut,
   verifyPasswordResetCode,
   markNotificationRead,
