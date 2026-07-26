@@ -5,7 +5,7 @@
 
 import { adminAuth } from './_lib/firebase-admin.js';
 
-const ALLOWED_ORIGINS = ['https://jobs.nearwork.co', 'https://talent.nearwork.co'];
+const ALLOWED_ORIGINS = ['https://jobs.nearwork.co', 'https://talent.nearwork.co', 'https://www.nearwork.co', 'https://nearwork.co'];
 
 export default async function handler(req, res) {
   const origin = req.headers.origin || '';
