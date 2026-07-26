@@ -1846,6 +1846,9 @@ function _onbSeed() {
     email: c.email || state.user?.email || "",
     phone: String(c.phone || c.whatsapp || "").replace(/^\+?57\s?/, ""),
     city: cityText,
+    country: c.locationCountry || c.country || "",
+    timezone: c.timezone || c.timeZone || "",
+    timezoneName: c.timezoneName || "",
     linkedin,
     english: c.englishLevel || _onbEnglishFromExisting(c.english),
     roles,
@@ -2454,6 +2457,150 @@ function _onbUpdateSalaryCallout() {
   syncIcons();
 }
 
+// ── Google Places autocomplete + time-zone detection (location field) ─────────
+// Loads the Maps JS API once, lazily, behind a cached promise. Resolves to
+// `google.maps` when ready, or `null` if the key is missing / the script fails.
+// Everything below degrades gracefully: if the API is unavailable the plain
+// text input keeps working and onboarding still finishes.
+let _gmapsPromise = null;
+function loadGoogleMaps() {
+  if (_gmapsPromise) return _gmapsPromise;
+  const KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  if (!KEY) { _gmapsPromise = Promise.resolve(null); return _gmapsPromise; }
+  if (window.google?.maps?.importLibrary) { _gmapsPromise = Promise.resolve(window.google.maps); return _gmapsPromise; }
+  _gmapsPromise = new Promise((resolve) => {
+    const settle = () => {
+      let tries = 0;
+      const check = () => {
+        if (window.google?.maps?.importLibrary) return resolve(window.google.maps);
+        if (tries++ > 50) return resolve(null); // ~5s guard, then give up quietly
+        setTimeout(check, 100);
+      };
+      check();
+    };
+    const existing = document.querySelector("script[data-gmaps-loader]");
+    if (existing) {
+      existing.addEventListener("load", settle);
+      existing.addEventListener("error", () => resolve(null));
+      if (window.google?.maps?.importLibrary) settle();
+      return;
+    }
+    const s = document.createElement("script");
+    s.setAttribute("data-gmaps-loader", "1");
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(KEY)}&libraries=places&v=weekly&loading=async`;
+    s.async = true;
+    s.onload = settle;
+    s.onerror = () => resolve(null);
+    document.head.appendChild(s);
+  });
+  return _gmapsPromise;
+}
+
+// Call the Time Zone API from the browser for a lat/lng and store the result.
+async function _onbFetchTimezone(lat, lng) {
+  const KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  if (!KEY || lat == null || lng == null) return;
+  try {
+    const ts = Math.floor(Date.now() / 1000);
+    const res = await fetch(`https://maps.googleapis.com/maps/api/timezone/json?location=${lat},${lng}&timestamp=${ts}&key=${encodeURIComponent(KEY)}`);
+    const data = await res.json();
+    if (data && data.status === "OK") {
+      _onbData.timezone = data.timeZoneId;
+      _onbData.timezoneName = data.timeZoneName;
+      _onbUpdateTimezoneHint();
+      _onbScheduleSave();
+    }
+  } catch (e) { /* silent — leave timezone unset */ }
+}
+
+function _onbUpdateTimezoneHint() {
+  const hint = document.querySelector("#onb2TzHint");
+  if (!hint) return;
+  if (_onbData.timezone) {
+    hint.textContent = `Time zone: ${_onbData.timezone} · auto-detected`;
+    hint.style.display = "";
+  } else {
+    hint.style.display = "none";
+  }
+}
+
+// Enhance the plain "Where you're based" input with the NEW PlaceAutocompleteElement.
+// Re-run safely on every About-step mount; guarded so a given input node is only
+// enhanced once even if the async load resolves after a re-render.
+async function _onbInitCityAutocomplete() {
+  const input = document.querySelector('input[data-onb-field="city"]');
+  if (!input) return;
+  const wrap = input.closest(".onb2-fieldwrap");
+  if (!wrap || wrap.dataset.onbCityEnhanced) return;
+  wrap.dataset.onbCityEnhanced = "pending";
+
+  const maps = await loadGoogleMaps();
+  // No key / script failed → leave the plain input working, drop the guard.
+  if (!maps || !document.body.contains(input)) { delete wrap.dataset.onbCityEnhanced; return; }
+
+  let PlaceAutocompleteElement;
+  try {
+    ({ PlaceAutocompleteElement } = await maps.importLibrary("places"));
+  } catch (e) { delete wrap.dataset.onbCityEnhanced; return; }
+  if (!PlaceAutocompleteElement || !document.body.contains(input)) { delete wrap.dataset.onbCityEnhanced; return; }
+
+  let el;
+  try {
+    el = new PlaceAutocompleteElement({ types: ["(cities)"] });
+  } catch (e) { delete wrap.dataset.onbCityEnhanced; return; }
+  wrap.dataset.onbCityEnhanced = "1";
+  el.className = "onb2-gmaps-ac";
+
+  // Hide the original field box (keeps the label + hint) and mount the element.
+  const box = wrap.querySelector(".onb2-fieldbox");
+  if (box) box.style.display = "none";
+  const hint = wrap.querySelector(".onb2-fieldhint");
+  if (hint) hint.insertAdjacentElement("beforebegin", el);
+  else wrap.appendChild(el);
+
+  // Auto-detected time-zone helper line under the field.
+  const tz = document.createElement("div");
+  tz.id = "onb2TzHint";
+  tz.className = "onb2-fieldhint onb2-tzhint";
+  tz.style.display = "none";
+  (hint || el).insertAdjacentElement("afterend", tz);
+  _onbUpdateTimezoneHint();
+
+  // Seed the visible value from stored data (returning / CV-parsed candidates).
+  const seed = _onbData.city
+    ? (_onbData.country && !String(_onbData.city).includes(",") ? `${_onbData.city}, ${_onbData.country}` : _onbData.city)
+    : "";
+  if (seed) {
+    try { el.value = seed; } catch (_) { /* not settable in this version */ }
+    requestAnimationFrame(() => { const inp = el.querySelector("input"); if (inp && !inp.value) inp.value = seed; });
+  }
+
+  el.addEventListener("gmp-select", async ({ placePrediction }) => {
+    try {
+      const place = placePrediction.toPlace();
+      await place.fetchFields({ fields: ["displayName", "formattedAddress", "location", "addressComponents"] });
+      const comps = place.addressComponents || [];
+      const find = (type) => comps.find((c) => (c.types || []).includes(type));
+      const text = (comp) => comp ? (comp.longText || comp.long_name || "") : "";
+      const cityComp = find("locality") || find("postal_town") || find("administrative_area_level_2") || find("administrative_area_level_1");
+      const countryComp = find("country");
+      const city = text(cityComp);
+      const country = text(countryComp);
+      if (city) _onbData.city = city;
+      if (country) _onbData.country = country;
+      _onbChromeUpdate();
+
+      const loc = place.location;
+      if (loc) {
+        const lat = typeof loc.lat === "function" ? loc.lat() : loc.lat;
+        const lng = typeof loc.lng === "function" ? loc.lng() : loc.lng;
+        await _onbFetchTimezone(lat, lng);
+      }
+      _onbScheduleSave();
+    } catch (e) { /* silent — plain input value is still captured on typing */ }
+  });
+}
+
 // ── Bind ──────────────────────────────────────────────────────────────────────
 function _onbBind(step) {
   document.querySelectorAll("[data-onb-nav]").forEach((b) => b.addEventListener("click", () => _onbRender(Number(b.dataset.onbNav))));
@@ -2550,6 +2697,8 @@ function _onbBind(step) {
     document.querySelector("[data-onb-manual]")?.addEventListener("click", () => _onbRender(1));
   }
 
+  if (step === 1) _onbInitCityAutocomplete();
+
   if (step === 4) {
     document.querySelectorAll("[data-onb-done-act]").forEach((b) => b.addEventListener("click", () => {
       const act = b.dataset.onbDoneAct;
@@ -2575,7 +2724,10 @@ function _onbBuildProfile(finishing) {
   const cityParts = String(d.city || "").split(",").map((s) => s.trim()).filter(Boolean);
   const cityOnly = cityParts[0] || "";
   const countryFromCity = cityParts.length > 1 ? cityParts[cityParts.length - 1] : "";
-  const country = countryFromCity || state.candidate?.locationCountry || "Colombia";
+  // Prefer the country captured separately by Places autocomplete; fall back to a
+  // comma in the free-text field, then the existing profile, then a default.
+  const country = d.country || countryFromCity || state.candidate?.locationCountry || "Colombia";
+  const locationCombined = [cityOnly, country].filter(Boolean).join(", ") || String(d.city || "");
   const min = Number(d.salaryMin) || null;
   const max = Number(d.salaryMax) || null;
   const salaryLabel = (min && max) ? `$${min.toLocaleString("en-US")}–$${max.toLocaleString("en-US")} USD/mo` : (min ? `$${min.toLocaleString("en-US")} USD/mo` : "");
@@ -2595,10 +2747,13 @@ function _onbBuildProfile(finishing) {
     targetRole,
     headline: targetRole || state.candidate?.headline || "Nearwork candidate",
     currentRole,
-    location: d.city || "",
+    location: locationCombined,
     locationCity: cityOnly,
     city: cityOnly,
     locationCountry: country,
+    timezone: d.timezone || "",
+    timeZone: d.timezone || "",
+    timezoneName: d.timezoneName || "",
     english: _ONB_ENG_SAVE[d.english] || d.english || "",
     englishLevel: d.english || "",
     salary: salaryLabel,

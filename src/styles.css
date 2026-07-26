@@ -5958,6 +5958,44 @@ textarea:focus {
 .onb2-input:disabled { color: var(--onb2-g600); }
 textarea.onb2-input { padding: 13px 0; resize: none; }
 .onb2-fieldhint { font-size: 12.5px; color: var(--onb2-g500); margin-top: 6px; line-height: 1.45; }
+.onb2-tzhint { color: var(--onb2-accent-ink); font-weight: 500; }
+
+/* Google Places (New) PlaceAutocompleteElement — styled to match .onb2-input.
+   Host is styled as the field box; the internal input is neutralised where
+   reachable. Google's web component renders its own dropdown. */
+gmp-place-autocomplete.onb2-gmaps-ac {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  background: #FBFBF9;
+  border: 1.5px solid var(--onb2-g200);
+  border-radius: 12px;
+  min-height: 47px;
+  font-family: var(--font);
+  font-size: 15px;
+  color: var(--onb2-black);
+  transition: border-color 150ms, box-shadow 150ms, background 150ms;
+}
+gmp-place-autocomplete.onb2-gmaps-ac:focus-within {
+  background: #fff;
+  border-color: var(--onb2-accent);
+  box-shadow: 0 0 0 4px var(--onb2-accent-ring);
+}
+.onb2-gmaps-ac input,
+.onb2-gmaps-ac .pac-target-input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 44px;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--onb2-black);
+  letter-spacing: -0.01em;
+  padding: 0 14px;
+}
 .onb2-verified { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #16A34A; background: #F0FDF4; border-radius: 8px; padding: 6px 10px; margin-right: 4px; }
 
 .onb2-seg { display: grid; gap: 6px; background: #FBFBF9; border: 1.5px solid var(--onb2-g200); border-radius: 12px; padding: 5px; }
