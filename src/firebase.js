@@ -240,6 +240,8 @@ function toAtsCandidate(uid, data) {
     city: normalizeLocationKey(cityRaw),
     department: data.locationDepartment || data.department || "",
     country: data.locationCountry || "Colombia",
+    timezone: data.timezone || data.timeZone || "",
+    timezoneName: data.timezoneName || "",
     source: "talent.nearwork.co",
     status: data.status || "active",
     score: Number(data.score || 50),
