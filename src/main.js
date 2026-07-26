@@ -2416,8 +2416,9 @@ function _onbStepDone() {
   const roleLine = _applyRole && _applyRole.title
     ? `<div style="display:inline-flex;align-items:center;gap:8px;background:var(--onb2-accent-bg);border:1px solid var(--onb2-accent-border);color:#0E7060;border-radius:999px;padding:8px 15px;font-size:13.5px;font-weight:600;margin-top:16px">${_onbI("check-circle", 16, "#10A07C")} Application sent — ${escapeHtml(_applyRole.title)}</div>`
     : "";
+  // Assessment card removed: assessments are recruiter-assigned, so a brand-new
+  // candidate has none to take yet (it appears in their dashboard when assigned).
   const cards = [
-    { icon: "clipboard-check", title: "Take your 12-minute assessment", desc: "One short skills + working-style check. Profiles with it get 3× more interviews.", cta: "Start now", act: "assessment" },
     { icon: "search", title: "See who’s hiring right now", desc: `${fn} roles inside your salary range are live today.`, cta: "See roles", act: "jobs" },
   ];
   return `<div style="max-width:560px">
