@@ -1884,8 +1884,29 @@ function _onbWordmark(size) {
 }
 
 // ── Entry + shell ─────────────────────────────────────────────────────────────
+// Record the application to the role the candidate came from (passed via ?role=
+// from nearwork.co/jobs/apply). Runs under the candidate's own auth here on
+// talent, where the rules allow applyToJob — unlike the client write on the
+// marketing domain / the 500-ing jobs server. Fires once per session.
+let _onbApplyFired = false;
+async function _onbApplyToRoleOnce() {
+  if (_onbApplyFired) return;
+  let role = null;
+  try { role = JSON.parse(sessionStorage.getItem("nw_apply_role") || "null"); } catch (e) {}
+  if (!role || !role.code) return;
+  const uid = state.user && state.user.uid;
+  if (!uid || !hasFirebaseConfig) return;
+  _onbApplyFired = true;
+  try {
+    await applyToJob(uid, { code: role.code, title: role.title || role.code });
+  } catch (e) {
+    console.warn("[onb] applyToJob failed:", e && (e.message || e));
+  }
+}
+
 function renderOnboardingApp() {
   _onbSeed();
+  _onbApplyToRoleOnce();
   app.innerHTML = `
     <div class="onb2-page">
       <aside class="onb2-rail" id="onb2Rail"></aside>
