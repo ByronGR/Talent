@@ -1897,8 +1897,12 @@ async function _onbApplyToRoleOnce() {
   const uid = state.user && state.user.uid;
   if (!uid || !hasFirebaseConfig) return;
   _onbApplyFired = true;
+  const nm = (state.candidate && state.candidate.name)
+    || [_onbData.first, _onbData.last].filter(Boolean).join(" ")
+    || (state.user && state.user.displayName) || "";
+  const em = (state.candidate && state.candidate.email) || (state.user && state.user.email) || "";
   try {
-    await applyToJob(uid, { code: role.code, title: role.title || role.code });
+    await applyToJob(uid, { code: role.code, title: role.title || role.code, candidateName: nm, candidateEmail: em });
   } catch (e) {
     console.warn("[onb] applyToJob failed:", e && (e.message || e));
   }
@@ -2588,20 +2592,51 @@ function loadGoogleMaps() {
 }
 
 // Call the Time Zone API from the browser for a lat/lng and store the result.
+const _ONB_COUNTRY_TZ = {
+  "colombia": "America/Bogota", "argentina": "America/Argentina/Buenos_Aires",
+  "mexico": "America/Mexico_City", "méxico": "America/Mexico_City",
+  "peru": "America/Lima", "perú": "America/Lima", "chile": "America/Santiago",
+  "brazil": "America/Sao_Paulo", "brasil": "America/Sao_Paulo",
+  "venezuela": "America/Caracas", "ecuador": "America/Guayaquil",
+  "bolivia": "America/La_Paz", "uruguay": "America/Montevideo",
+  "paraguay": "America/Asuncion", "costa rica": "America/Costa_Rica",
+  "panama": "America/Panama", "panamá": "America/Panama",
+  "guatemala": "America/Guatemala", "el salvador": "America/El_Salvador",
+  "honduras": "America/Tegucigalpa", "nicaragua": "America/Managua",
+  "dominican republic": "America/Santo_Domingo", "república dominicana": "America/Santo_Domingo",
+  "united states": "America/New_York", "usa": "America/New_York",
+};
+function _onbCountryTimezone(country) {
+  return country ? (_ONB_COUNTRY_TZ[String(country).trim().toLowerCase()] || "") : "";
+}
+
 async function _onbFetchTimezone(lat, lng) {
   const KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-  if (!KEY || lat == null || lng == null) return;
-  try {
-    const ts = Math.floor(Date.now() / 1000);
-    const res = await fetch(`https://maps.googleapis.com/maps/api/timezone/json?location=${lat},${lng}&timestamp=${ts}&key=${encodeURIComponent(KEY)}`);
-    const data = await res.json();
-    if (data && data.status === "OK") {
-      _onbData.timezone = data.timeZoneId;
-      _onbData.timezoneName = data.timeZoneName;
-      _onbUpdateTimezoneHint();
-      _onbScheduleSave();
+  if (KEY && lat != null && lng != null) {
+    try {
+      const ts = Math.floor(Date.now() / 1000);
+      const res = await fetch(`https://maps.googleapis.com/maps/api/timezone/json?location=${lat},${lng}&timestamp=${ts}&key=${encodeURIComponent(KEY)}`);
+      const data = await res.json();
+      if (data && data.status === "OK" && data.timeZoneId) {
+        _onbData.timezone = data.timeZoneId;
+        _onbData.timezoneName = data.timeZoneName || "";
+        _onbUpdateTimezoneHint();
+        _onbScheduleSave();
+        return;
+      }
+      console.warn("[onb] Time Zone API:", data && (data.status + (data.errorMessage ? " — " + data.errorMessage : "")));
+    } catch (e) {
+      console.warn("[onb] Time Zone API error:", e && (e.message || e));
     }
-  } catch (e) { /* silent — leave timezone unset */ }
+  }
+  // Fallback: derive from the selected country so the timezone still populates
+  // (covers the case where the Time Zone web-service rejects the browser key).
+  const tz = _onbCountryTimezone(_onbData.country);
+  if (tz) {
+    _onbData.timezone = tz;
+    _onbUpdateTimezoneHint();
+    _onbScheduleSave();
+  }
 }
 
 function _onbUpdateTimezoneHint() {
