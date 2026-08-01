@@ -1,10 +1,17 @@
 // POST /api/parse-cv
-// Server-side proxy: receives a CV as base64 JSON, sends it to the
-// Affinda Resume Parser as multipart/form-data, returns structured data.
-// The API key lives in process.env.AFFINDA_API_KEY (server-side only).
+// Server-side proxy: receives a CV as base64 JSON and returns structured data
+// to pre-fill the onboarding form.
+//
+// Engine: Claude (see _lib/cv-ai.js). Reads the page visually, so two-column and
+// scanned CVs work, and pulls skills for recall so candidates aren't missed by
+// opening matching later. Falls back to Affinda only if ANTHROPIC_API_KEY is
+// absent, so a misconfigured deploy degrades instead of breaking onboarding.
+//
+// The response shape is unchanged from the Affinda era — the client is untouched.
 
 import { checkRateLimit } from './_lib/rate-limit.js';
 import { adminAuth } from './_lib/firebase-admin.js';
+import { extractCV } from './_lib/cv-ai.js';
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -27,9 +34,10 @@ export default async function handler(req, res) {
     return res.status(429).json({ ok: false, error: 'Too many requests. Please try again later.' });
   }
 
+  const anthropicKey = (process.env.ANTHROPIC_API_KEY || "").trim();
   const key = (process.env.AFFINDA_API_KEY || "").trim();
-  if (!key) {
-    return res.status(500).json({ ok: false, error: "AFFINDA_API_KEY not configured" });
+  if (!anthropicKey && !key) {
+    return res.status(500).json({ ok: false, error: "No CV parser configured" });
   }
 
   // Vercel auto-parses JSON bodies into req.body; fall back to stream read.
@@ -66,6 +74,28 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, error: "File is too large. Maximum size is 10 MB." });
   }
 
+  // ── Claude (default) ───────────────────────────────────────────────────────
+  if (anthropicKey) {
+    try {
+      const out = await extractCV({
+        buffer: Buffer.from(base64, "base64"),
+        mimeType: normalizedMime,
+        apiKey: anthropicKey,
+      });
+      const { _usage, ...profile } = out;
+      console.log("[parse-cv] claude ok", _usage?.input_tokens, "in /", _usage?.output_tokens, "out");
+      return res.status(200).json({ ok: true, ...profile });
+    } catch (e) {
+      // Never fail onboarding on a parser error — fall through to Affinda if
+      // it's still configured, otherwise return empty fields for manual entry.
+      console.error("[parse-cv] claude failed:", e?.message || String(e));
+      if (!key) {
+        return res.status(200).json({ ok: true, name: "", phone: "", city: "", summary: "", skills: [], workHistory: [], languages: [], education: [], certifications: [] });
+      }
+    }
+  }
+
+  // ── Affinda (fallback only) ────────────────────────────────────────────────
   try {
     const fileBuffer = Buffer.from(base64, "base64");
 
