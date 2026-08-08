@@ -1831,7 +1831,7 @@ function _onbSeed() {
   const nameParts = String(c.name || "").trim().split(/\s+/).filter(Boolean);
   const cityText = c.location || [c.city || c.locationCity, c.department || c.locationDepartment].filter(Boolean).join(", ") || "";
   const roles = Array.isArray(c.workHistory) && c.workHistory.length
-    ? c.workHistory.map((w) => ({ title: w.title || "", company: w.company || "", from: w.from || "", to: (w.to === "present" ? "" : w.to) || "", current: w.to === "present" || !!w.current, open: false }))
+    ? c.workHistory.map((w) => ({ title: w.title || "", company: w.company || "", from: w.from || "", to: (w.to === "present" ? "" : w.to) || "", current: w.to === "present" || !!w.current || !!w.isCurrent, open: false }))
     : [];
   const edu = Array.isArray(c.certifications) && c.certifications.length
     ? c.certifications.map((x) => ({ kind: "cert", title: x.name || x.title || "", school: x.issuer || x.school || "", year: x.date || x.year || "", open: false }))
@@ -2490,7 +2490,7 @@ function _onbMergeParsed(res) {
   if (res.phone && !d.phone) d.phone = String(res.phone).replace(/^\+?57\s?/, "");
   if (res.city && !d.city) { d.city = res.city; flags.city = true; }
   if (Array.isArray(res.workHistory) && res.workHistory.length && !d.roles.length) {
-    d.roles = res.workHistory.slice(0, 6).map((w) => ({ title: w.title || "", company: w.company || "", from: w.from || "", to: (w.to === "present" ? "" : w.to) || "", current: w.to === "present" || !!w.current, open: false }));
+    d.roles = res.workHistory.slice(0, 6).map((w) => ({ title: w.title || "", company: w.company || "", from: w.from || "", to: (w.to === "present" ? "" : w.to) || "", current: w.to === "present" || !!w.current || !!w.isCurrent, open: false }));
   }
   if (Array.isArray(res.skills) && res.skills.length) {
     d.skills = [...new Set([...d.skills, ...res.skills.map(canonicalSkillName).filter(Boolean)])];
