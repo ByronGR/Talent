@@ -898,6 +898,11 @@ function renderLogin(mode = "login") {
           ${state.message ? `<div class="notice">${icon("lock")} ${escapeAttr(state.message)}</div>` : ""}
           ${hasFirebaseConfig ? "" : `<div class="notice">${icon("triangle-alert")} Sign-in is still being set up.</div>`}
           ${hasFirebaseConfig ? `
+          <button type="button" id="linkedinSignInBtn" class="nw-signin-btn" style="background:#0A66C2;color:#fff;border:1.5px solid #0A66C2;box-shadow:none;margin-bottom:6px;position:relative;">
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" style="flex-shrink:0" fill="#fff"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.63-1.85 3.36-1.85 3.6 0 4.27 2.37 4.27 5.45v6.29zM5.34 7.43a2.07 2.07 0 1 1 0-4.14 2.07 2.07 0 0 1 0 4.14zM7.12 20.45H3.55V9h3.57v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.56C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.72V1.72C24 .77 23.2 0 22.22 0z"/></svg>
+            Continue with LinkedIn
+            <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);border-radius:999px;padding:2px 7px;">Recommended</span>
+          </button>
           <button type="button" id="googleSignInBtn" class="nw-signin-btn" style="background:#fff;color:#111;border:1.5px solid #d9d9d9;box-shadow:none;margin-bottom:4px;">
             <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true" style="flex-shrink:0"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
             Continue with Google
@@ -962,6 +967,14 @@ function renderLogin(mode = "login") {
     const pwField = document.querySelector("#passwordInput");
     if (pwField) pwField.focus();
   }
+  try {
+    const _liErr = sessionStorage.getItem("nw_li_error");
+    if (_liErr) {
+      sessionStorage.removeItem("nw_li_error");
+      const m = document.querySelector("#formMessage");
+      if (m) { m.classList.remove("success"); m.textContent = _liErr; }
+    }
+  } catch (e) {}
   const _fromJobs = new URLSearchParams(window.location.search).get("from") === "jobs";
   if (_fromJobs && state.message !== "Welcome from Jobs — log in to view your dashboard.") {
     const msg = document.querySelector("#formMessage");
@@ -1043,6 +1056,20 @@ function renderLogin(mode = "login") {
     } catch (error) {
       message.textContent = friendlyAuthError(error);
     }
+  });
+  document.getElementById("linkedinSignInBtn")?.addEventListener("click", () => {
+    const lbtn = document.getElementById("linkedinSignInBtn");
+    const lmsg = document.getElementById("formMessage");
+    if (lbtn) lbtn.disabled = true;
+    if (lmsg) { lmsg.classList.remove("success"); lmsg.textContent = "Opening LinkedIn…"; }
+    // The opening they came to apply for has to survive the trip to
+    // linkedin.com and back, so it goes to the server as a query param and
+    // returns inside the signed OAuth state.
+    const here = new URLSearchParams(window.location.search);
+    const opening = here.get("opening") || here.get("code") || "";
+    const start = new URLSearchParams();
+    if (opening) start.set("opening", opening);
+    window.location.href = `/api/linkedin/start${start.toString() ? `?${start}` : ""}`;
   });
   document.getElementById("googleSignInBtn")?.addEventListener("click", async () => {
     const gbtn = document.getElementById("googleSignInBtn");
@@ -5146,7 +5173,34 @@ window.addEventListener("popstate", () => {
 });
 
 // Cross-domain sign-in handoff from jobs.nearwork.co: ?ct=<customToken>
-const _pendingCt = new URLSearchParams(window.location.search).get('ct');
+// A LinkedIn sign-in returns a custom token exactly like the jobs.nearwork.co
+// handoff does, so it rides the same path — one sign-in mechanism, not two.
+const _liParams = new URLSearchParams(window.location.search);
+const _pendingCt = _liParams.get('ct') || _liParams.get('li_token');
+
+// Everything LinkedIn sent back has to be read BEFORE the query string is
+// stripped below, or it's gone.
+try {
+  if (_liParams.get('li_error')) {
+    sessionStorage.setItem('nw_li_error', _liParams.get('li_error'));
+  }
+  if (_liParams.get('li_token')) {
+    // A brand-new LinkedIn account has no profile yet, so it must land on the
+    // onboarding wizard. This is the same flag the email signup sets.
+    if (_liParams.get('new') === '1') sessionStorage.setItem('nw_new_account', '1');
+
+    // The opening they came to apply for, carried through LinkedIn inside the
+    // OAuth state and stored under the key onboarding already reads.
+    const _liOpening = _liParams.get('opening');
+    if (_liOpening) {
+      sessionStorage.setItem('nw_apply_role', JSON.stringify({ code: _liOpening, title: _liOpening }));
+    }
+    const _liPhoto = _liParams.get('li_photo');
+    if (_liPhoto) sessionStorage.setItem('nw_li_photo', _liPhoto);
+    const _liName = _liParams.get('li_name');
+    if (_liName) sessionStorage.setItem('nw_li_name', _liName);
+  }
+} catch (e) {}
 // Capture the role the candidate applied to (passed from nearwork.co/jobs/apply)
 // BEFORE the ct strip wipes the query, so the onboarding Done step can confirm it.
 try {
@@ -5154,7 +5208,9 @@ try {
   const _rCode = _sp.get('role'), _rTitle = _sp.get('roleTitle');
   if (_rCode || _rTitle) sessionStorage.setItem('nw_apply_role', JSON.stringify({ code: _rCode || '', title: _rTitle || _rCode || '' }));
 } catch (e) {}
-if (_pendingCt) window.history.replaceState({}, '', window.location.pathname);
+// Strip the LinkedIn round-trip params too, not just the token — otherwise a
+// failed attempt leaves ?li_error= in the address bar and re-shows on reload.
+if (_pendingCt || _liParams.get('li_error')) window.history.replaceState({}, '', window.location.pathname);
 let _ctPending = Boolean(_pendingCt);
 
 if (hasFirebaseConfig) {
@@ -5177,7 +5233,32 @@ if (hasFirebaseConfig) {
   }, 2500);
   if (_pendingCt) {
     signInWithHandoffToken(_pendingCt)
-      .then((cred) => { _ctPending = false; loadDashboard(cred.user); })
+      .then(async (cred) => {
+        _ctPending = false;
+        // A first-time LinkedIn signup has a Firebase user but no candidate
+        // record yet. The email signup creates one inline; without the same
+        // here, the wizard would open against a profile that doesn't exist.
+        if (sessionStorage.getItem("nw_new_account") === "1") {
+          const liName = sessionStorage.getItem("nw_li_name") || cred.user.displayName || "";
+          const liPhoto = sessionStorage.getItem("nw_li_photo") || cred.user.photoURL || "";
+          try {
+            await upsertCandidate(cred.user.uid, {
+              name: properName(liName),
+              email: (cred.user.email || "").toLowerCase(),
+              availability: "open",
+              headline: "Nearwork candidate",
+              onboarded: false,
+              source: "linkedin",
+              ...(liPhoto ? { photoURL: liPhoto } : {}),
+            });
+          } catch (e) {
+            console.error("[NW] LinkedIn profile create failed:", e?.message);
+          }
+          sessionStorage.removeItem("nw_li_name");
+          sessionStorage.removeItem("nw_li_photo");
+        }
+        loadDashboard(cred.user);
+      })
       .catch(() => { _ctPending = false; loadPublicPage(); });
   }
 } else {
