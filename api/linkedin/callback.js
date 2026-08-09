@@ -184,6 +184,7 @@ export default async function handler(req, res) {
         // Durable: survives any number of sign-ins until they finish setup.
         needsOnboarding: true,
         source: 'linkedin',
+        signupProvider: 'linkedin',
         ...(storedPhoto ? { photoURL: storedPhoto } : {}),
         createdAt: now,
         updatedAt: now,
@@ -206,6 +207,7 @@ export default async function handler(req, res) {
         timezone: '', timezoneName: '',
         // The rules only accept these two values on this collection.
         source: 'talent.nearwork.co',
+        signupProvider: 'linkedin',
         status: 'active',
         score: 50,
         email,
@@ -248,7 +250,6 @@ export default async function handler(req, res) {
     if (ctx.o) next.set('opening', ctx.o);
     if (storedPhoto) next.set('li_photo', storedPhoto);
     if (name) next.set('li_name', name);
-    if (recordReport) next.set('li_debug', recordReport);
 
     const dest = ctx.r && ctx.r.startsWith('/') ? ctx.r : '/';
     res.setHeader('Set-Cookie', `${STATE_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`);
