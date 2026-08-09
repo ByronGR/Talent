@@ -612,6 +612,21 @@ if (typeof window !== "undefined") {
 
 // Fix ALL-CAPS names → Title case ("SEBASTIAN" → "Sebastian"); leaves already
 // mixed-case words like "McDonald" / "José" alone.
+// ── LinkedIn sign-in: off for candidates until it's verified end to end ──────
+// It is on main, so it ships whether or not it works. An unfinished sign-in
+// costs a real candidate — they bounce and we never learn they existed — which
+// is a far worse outcome than not offering the button at all.
+//
+// Visible only when explicitly switched on: VITE_LINKEDIN_LOGIN=1 at build time,
+// or ?li=1 on the URL, which lets it be tested in production without exposing it
+// to anyone else. Remove this gate once a full signup has been verified.
+const LINKEDIN_LOGIN_ENABLED = (() => {
+  try {
+    if (import.meta.env?.VITE_LINKEDIN_LOGIN === '1') return true;
+    return new URLSearchParams(window.location.search).get('li') === '1';
+  } catch { return false; }
+})();
+
 function properName(str) {
   return String(str || "").replace(/\S+/g, (w) =>
     /[A-Za-zÀ-ÿ]/.test(w) && w === w.toUpperCase()
@@ -898,11 +913,11 @@ function renderLogin(mode = "login") {
           ${state.message ? `<div class="notice">${icon("lock")} ${escapeAttr(state.message)}</div>` : ""}
           ${hasFirebaseConfig ? "" : `<div class="notice">${icon("triangle-alert")} Sign-in is still being set up.</div>`}
           ${hasFirebaseConfig ? `
-          <button type="button" id="linkedinSignInBtn" class="nw-signin-btn" style="background:#0A66C2;color:#fff;border:1.5px solid #0A66C2;box-shadow:none;margin-bottom:6px;">
+          ${LINKEDIN_LOGIN_ENABLED ? `<button type="button" id="linkedinSignInBtn" class="nw-signin-btn" style="background:#0A66C2;color:#fff;border:1.5px solid #0A66C2;box-shadow:none;margin-bottom:6px;">
             <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" style="flex-shrink:0" fill="#fff"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.63-1.85 3.36-1.85 3.6 0 4.27 2.37 4.27 5.45v6.29zM5.34 7.43a2.07 2.07 0 1 1 0-4.14 2.07 2.07 0 0 1 0 4.14zM7.12 20.45H3.55V9h3.57v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.56C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.72V1.72C24 .77 23.2 0 22.22 0z"/></svg>
             Continue with LinkedIn
             <span style="flex:none;font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);border-radius:999px;padding:2px 7px;">Recommended</span>
-          </button>
+          </button>` : ""}
           <button type="button" id="googleSignInBtn" class="nw-signin-btn" style="background:#fff;color:#111;border:1.5px solid #d9d9d9;box-shadow:none;margin-bottom:4px;">
             <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true" style="flex-shrink:0"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
             Continue with Google
