@@ -162,7 +162,13 @@ export default async function handler(req, res) {
     // rules, silently, leaving an account that could sign in but appeared
     // nowhere in Admin. The server has admin rights and already knows
     // everything needed, so it writes both.
-    if (isNew) {
+    // Runs for EVERY sign-in, not just new users. Gating this on `isNew` meant
+    // an account that was half-built — an auth user whose profile write failed,
+    // or one created before this flow existed — stayed half-built forever, and
+    // signing in again could never repair it. Each document is written only
+    // when it is genuinely missing, so nothing a candidate has already filled
+    // in is ever overwritten.
+    {
       const candidateCode = `CAND-${uid.replace(/[^a-z0-9]/gi, '').slice(0, 8).toUpperCase()}`;
       const today = new Date().toISOString().slice(0, 10);
       const now = new Date();
@@ -210,10 +216,22 @@ export default async function handler(req, res) {
         updatedAt: now,
       };
 
-      await Promise.all([
-        adminDb().collection('users').doc(uid).set(profile, { merge: true }),
-        adminDb().collection('candidates').doc(candidateCode).set(ats, { merge: true }),
-      ]);
+      const usersRef = adminDb().collection('users').doc(uid);
+      const candRef = adminDb().collection('candidates').doc(candidateCode);
+      const [usersSnap, candSnap] = await Promise.all([usersRef.get(), candRef.get()]);
+
+      const writes = [];
+      if (!usersSnap.exists) writes.push(usersRef.set(profile, { merge: true }));
+      if (!candSnap.exists) writes.push(candRef.set(ats, { merge: true }));
+      // Someone who already has a profile keeps it — only the photo refreshes.
+      if (usersSnap.exists && storedPhoto) {
+        writes.push(usersRef.set({ photoURL: storedPhoto, updatedAt: now }, { merge: true }));
+      }
+      if (writes.length) await Promise.all(writes);
+      console.log('[linkedin] records:', {
+        uid, candidateCode,
+        createdUser: !usersSnap.exists, createdCandidate: !candSnap.exists,
+      });
     }
 
     const customToken = await adminAuth().createCustomToken(uid, { provider: 'linkedin' });
