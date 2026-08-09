@@ -86,6 +86,7 @@ export default async function handler(req, res) {
       return bail(res, 'Could not read your LinkedIn profile.');
     }
 
+    let recordReport = '';
     const email = String(info.email || '').toLowerCase().trim();
     const emailVerified = info.email_verified === true || info.email_verified === 'true';
     const name = String(info.name || [info.given_name, info.family_name].filter(Boolean).join(' ')).trim();
@@ -228,10 +229,10 @@ export default async function handler(req, res) {
         writes.push(usersRef.set({ photoURL: storedPhoto, updatedAt: now }, { merge: true }));
       }
       if (writes.length) await Promise.all(writes);
-      console.log('[linkedin] records:', {
-        uid, candidateCode,
-        createdUser: !usersSnap.exists, createdCandidate: !candSnap.exists,
-      });
+      recordReport = `uid=${uid} code=${candidateCode} `
+        + `user=${usersSnap.exists ? 'existed' : 'CREATED'} `
+        + `candidate=${candSnap.exists ? 'existed' : 'CREATED'}`;
+      console.log('[linkedin] records:', recordReport);
     }
 
     const customToken = await adminAuth().createCustomToken(uid, { provider: 'linkedin' });
@@ -247,6 +248,7 @@ export default async function handler(req, res) {
     if (ctx.o) next.set('opening', ctx.o);
     if (storedPhoto) next.set('li_photo', storedPhoto);
     if (name) next.set('li_name', name);
+    if (recordReport) next.set('li_debug', recordReport);
 
     const dest = ctx.r && ctx.r.startsWith('/') ? ctx.r : '/';
     res.setHeader('Set-Cookie', `${STATE_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`);

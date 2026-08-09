@@ -5206,6 +5206,20 @@ try {
     if (_liPhoto) sessionStorage.setItem('nw_li_photo', _liPhoto);
     const _liName = _liParams.get('li_name');
     if (_liName) sessionStorage.setItem('nw_li_name', _liName);
+    // What the server actually wrote, shown on the page. Diagnosing this from
+    // Firestore's console has repeatedly given the wrong answer, because its
+    // lists paginate and browser search only sees the rendered rows.
+    const _liDebug = _liParams.get('li_debug');
+    if (_liDebug) {
+      window.setTimeout(() => {
+        const bar = document.createElement('div');
+        bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#111;color:#0f0;'
+          + 'font:12px/1.5 ui-monospace,monospace;padding:10px 14px;word-break:break-all';
+        bar.textContent = 'LinkedIn: ' + _liDebug + '  (tap to dismiss)';
+        bar.onclick = () => bar.remove();
+        document.body.appendChild(bar);
+      }, 1200);
+    }
   }
 } catch (e) {}
 // Capture the role the candidate applied to (passed from nearwork.co/jobs/apply)
