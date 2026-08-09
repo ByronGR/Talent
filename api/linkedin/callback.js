@@ -10,7 +10,7 @@
 // attached to that role rather than floating loose.
 
 import crypto from 'node:crypto';
-import { adminAuth, adminBucket } from '../_lib/firebase-admin.js';
+import { adminAuth, adminBucket, adminDb } from '../_lib/firebase-admin.js';
 import { STATE_COOKIE, redirectUri } from './start.js';
 
 const TOKEN_URL = 'https://www.linkedin.com/oauth/v2/accessToken';
@@ -153,6 +153,67 @@ export default async function handler(req, res) {
         ...(storedPhoto ? { photoURL: storedPhoto } : {}),
         ...(name && !existing?.displayName ? { displayName: name } : {}),
       }).catch(() => null);
+    }
+
+    // ── The profile records, written HERE ──
+    // Creating the auth user on the server and its Firestore records in the
+    // browser meant two halves that could drift apart — and did: the browser
+    // half hung off a one-shot session flag and could be refused by security
+    // rules, silently, leaving an account that could sign in but appeared
+    // nowhere in Admin. The server has admin rights and already knows
+    // everything needed, so it writes both.
+    if (isNew) {
+      const candidateCode = `CAND-${uid.replace(/[^a-z0-9]/gi, '').slice(0, 8).toUpperCase()}`;
+      const today = new Date().toISOString().slice(0, 10);
+      const now = new Date();
+
+      const profile = {
+        name, email,
+        candidateCode,
+        role: 'candidate',
+        availability: 'open',
+        headline: 'Nearwork candidate',
+        onboarded: false,
+        // Durable: survives any number of sign-ins until they finish setup.
+        needsOnboarding: true,
+        source: 'linkedin',
+        ...(storedPhoto ? { photoURL: storedPhoto } : {}),
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      // Mirrors toAtsCandidate() so Admin sees the same shape it does for every
+      // other candidate. createdAt matters twice over: Admin sorts newest-first
+      // and the intake KPI buckets by month, and a record without it lands last
+      // and uncounted.
+      const ats = {
+        code: candidateCode,
+        uid, ownerUid: uid,
+        name: name || 'Talent member',
+        role: 'Nearwork candidate',
+        skills: [],
+        applied: today,
+        lastContact: today,
+        experience: 0,
+        location: '', city: '', department: '', country: '',
+        timezone: '', timezoneName: '',
+        // The rules only accept these two values on this collection.
+        source: 'talent.nearwork.co',
+        status: 'active',
+        score: 50,
+        email,
+        phone: '', whatsapp: '', currentRole: '',
+        ...(storedPhoto ? { photoURL: storedPhoto } : {}),
+        onboarded: false,
+        needsOnboarding: true,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      await Promise.all([
+        adminDb().collection('users').doc(uid).set(profile, { merge: true }),
+        adminDb().collection('candidates').doc(candidateCode).set(ats, { merge: true }),
+      ]);
     }
 
     const customToken = await adminAuth().createCustomToken(uid, { provider: 'linkedin' });

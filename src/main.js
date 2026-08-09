@@ -5242,32 +5242,10 @@ if (hasFirebaseConfig) {
     signInWithHandoffToken(_pendingCt)
       .then(async (cred) => {
         _ctPending = false;
-        // A first-time LinkedIn signup has a Firebase user but no candidate
-        // record yet. The email signup creates one inline; without the same
-        // here, the wizard would open against a profile that doesn't exist.
-        if (sessionStorage.getItem("nw_new_account") === "1") {
-          const liName = sessionStorage.getItem("nw_li_name") || cred.user.displayName || "";
-          const liPhoto = sessionStorage.getItem("nw_li_photo") || cred.user.photoURL || "";
-          try {
-            await upsertCandidate(cred.user.uid, {
-              name: properName(liName),
-              email: (cred.user.email || "").toLowerCase(),
-              availability: "open",
-              headline: "Nearwork candidate",
-              onboarded: false,
-              // Durable intent. nw_new_account is consumed on first read, so a
-              // candidate who signs in again before finishing loses it and gets
-              // dropped on the dashboard with an empty profile. This survives.
-              needsOnboarding: true,
-              source: "linkedin",
-              ...(liPhoto ? { photoURL: liPhoto } : {}),
-            });
-          } catch (e) {
-            console.error("[NW] LinkedIn profile create failed:", e?.message);
-          }
-          sessionStorage.removeItem("nw_li_name");
-          sessionStorage.removeItem("nw_li_photo");
-        }
+        // The profile records are created server-side in the LinkedIn callback,
+        // before this token is issued — nothing to write here.
+        sessionStorage.removeItem("nw_li_name");
+        sessionStorage.removeItem("nw_li_photo");
         loadDashboard(cred.user);
       })
       .catch((e) => {
