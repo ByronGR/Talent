@@ -174,7 +174,11 @@ export default async function handler(req, res) {
     res.writeHead(302, { Location: `${dest}?${next.toString()}` });
     res.end();
   } catch (e) {
+    // Name the failing stage in the message itself. Without it, diagnosing this
+    // means reading server logs, and the person hitting the error is a
+    // candidate who can't.
     console.error('[linkedin] callback failed:', e);
-    return bail(res, 'Something went wrong signing in with LinkedIn.');
+    const detail = String(e?.errorInfo?.code || e?.code || e?.message || 'unknown').slice(0, 120);
+    return bail(res, `LinkedIn sign-in failed (${detail})`);
   }
 }

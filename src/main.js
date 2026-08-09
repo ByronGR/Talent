@@ -5259,7 +5259,14 @@ if (hasFirebaseConfig) {
         }
         loadDashboard(cred.user);
       })
-      .catch(() => { _ctPending = false; loadPublicPage(); });
+      .catch((e) => {
+        // Swallowing this dumped the candidate on the logged-out page with no
+        // explanation — indistinguishable from never having tried to sign in.
+        console.error('[NW] custom-token sign-in failed:', e);
+        try { sessionStorage.setItem('nw_li_error', 'Sign-in failed: ' + (e?.code || e?.message || 'unknown error')); } catch {}
+        _ctPending = false;
+        loadPublicPage();
+      });
   }
 } else {
   loadPublicPage();
