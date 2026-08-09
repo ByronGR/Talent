@@ -1217,11 +1217,16 @@ async function loadDashboard(user) {
     const hasTargetRole = Boolean(candidate?.targetRole || (!isPlaceholderRole(candidate?.headline) && candidate?.headline));
     const fromJobs = new URLSearchParams(window.location.search).get("from") === "jobs";
     const hasExistingData = Boolean(candidate?.cvUrl || candidate?.applications?.length || (candidate?.skills?.length >= 3));
-    const skipWizard = candidate?.onboarded || hasTargetRole || hasExistingData || fromJobs;
+    // An explicit "this account hasn't been set up yet" beats every guess about
+    // whether the profile looks complete enough. Cleared only when they finish.
+    const mustOnboard = candidate?.needsOnboarding === true && !candidate?.onboarded;
+    const skipWizard = !mustOnboard && (candidate?.onboarded || hasTargetRole || hasExistingData || fromJobs);
     if (!candidate?.onboarded && skipWizard && candidate?.candidateCode) {
       updateCandidateProfile(user.uid, { onboarded: true, candidateCode: candidate.candidateCode }).catch(() => null);
     }
-    const activePage = (isNewAccount && !skipWizard) ? "onboarding" : skipWizard ? pageFromPath() : "onboarding";
+    const activePage = mustOnboard ? "onboarding"
+      : (isNewAccount && !skipWizard) ? "onboarding"
+      : skipWizard ? pageFromPath() : "onboarding";
     setState({
       candidate: {
         ...(candidate || {}),
@@ -4623,7 +4628,9 @@ function bindDashboardEvents() {
       marketingConsentAt: marketingConsent
         ? (state.candidate?.marketingConsent === true ? (state.candidate?.marketingConsentAt || null) : new Date().toISOString())
         : null,
-      onboarded: true
+      onboarded: true,
+      // Setup is done — stop forcing the wizard on every sign-in.
+      needsOnboarding: false
     };
     if (!state.user) {
       setState({ candidate: { ...state.candidate, ...data }, message: "Preview updated. Sign in to save this profile." });
@@ -5248,6 +5255,10 @@ if (hasFirebaseConfig) {
               availability: "open",
               headline: "Nearwork candidate",
               onboarded: false,
+              // Durable intent. nw_new_account is consumed on first read, so a
+              // candidate who signs in again before finishing loses it and gets
+              // dropped on the dashboard with an empty profile. This survives.
+              needsOnboarding: true,
               source: "linkedin",
               ...(liPhoto ? { photoURL: liPhoto } : {}),
             });
