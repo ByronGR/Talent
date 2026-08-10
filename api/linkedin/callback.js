@@ -33,6 +33,43 @@ function bail(res, message) {
   res.end();
 }
 
+/**
+ * The "your account is ready" email.
+ *
+ * The email signup sends this from the browser right after it creates the
+ * account. LinkedIn accounts are created here on the server instead, so nothing
+ * was sending it — a candidate signed up and heard nothing back.
+ *
+ * Posts to Admin's email API directly rather than through /api/send-email-proxy:
+ * that proxy exists to keep the call same-origin for BROWSERS, which a server
+ * doesn't need, and hopping through it would just add a network round trip.
+ */
+async function sendAccountCreatedEmail({ email, name }) {
+  const url = process.env.EMAIL_API_URL || 'https://admin.nearwork.co/api/send-email';
+  const secret = process.env.INTERNAL_EMAIL_SECRET || '';
+  const firstName = String(name || '').split(/\s+/)[0] || 'there';
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(secret ? { 'X-Internal-Secret': secret } : {}),
+      },
+      body: JSON.stringify({
+        to: email,
+        templateId: 'account_created',
+        data: { name: name || firstName, firstName, actionUrl: 'https://talent.nearwork.co' },
+      }),
+    });
+    if (!res.ok) {
+      console.error('[linkedin] account email failed:', res.status, await res.text().catch(() => ''));
+    }
+  } catch (e) {
+    // Never let a mail failure cost someone their sign-in.
+    console.error('[linkedin] account email failed:', e?.message);
+  }
+}
+
 export default async function handler(req, res) {
   const clientId = process.env.LINKEDIN_CLIENT_ID;
   const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
@@ -231,6 +268,13 @@ export default async function handler(req, res) {
         writes.push(usersRef.set({ photoURL: storedPhoto, updatedAt: now }, { merge: true }));
       }
       if (writes.length) await Promise.all(writes);
+
+      // Only for a genuinely new account, and only after the records are in
+      // place — a welcome email pointing at a profile that doesn't exist yet
+      // would be worse than none.
+      if (!usersSnap.exists && email) {
+        await sendAccountCreatedEmail({ email, name });
+      }
       recordReport = `uid=${uid} code=${candidateCode} `
         + `user=${usersSnap.exists ? 'existed' : 'CREATED'} `
         + `candidate=${candSnap.exists ? 'existed' : 'CREATED'}`;
