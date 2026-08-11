@@ -2235,7 +2235,27 @@ function _onbStepAbout() {
       </div>
       ${_onbField({ label: "Email", req: true, value: d.email, locked: true, trailing: `<span class="onb2-verified">${_onbI("check", 12, "#16A34A")}Verified</span>` })}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" class="onb2-two">
-        ${_onbField({ label: "WhatsApp / phone", req: true, prefix: "+57", value: d.phone, placeholder: "300 123 4567", hint: "Used for interview scheduling only.", data: `data-onb-field="phone"` })}
+        ${(() => {
+          // WhatsApp now lets people be reached by username instead of a phone
+          // number, so we have to know WHICH of the two this is. A username in a
+          // phone field is unusable: wa.me links only accept digits, and our
+          // link builders strip every non-digit, which would silently mangle it.
+          const isUser = d.whatsappType === "username";
+          return _onbField({
+            label: "WhatsApp", req: true,
+            prefix: isUser ? "@" : "+57",
+            value: d.phone,
+            placeholder: isUser ? "your.username" : "300 123 4567",
+            hint: isUser
+              ? "WhatsApp usernames are lowercase letters, numbers, dots and underscores."
+              : "Used for interview scheduling only.",
+            data: `data-onb-field="phone" ${isUser ? 'inputmode="text"' : 'inputmode="tel"'}`,
+            aside: `<span class="onb2-wa-switch">
+              <button type="button" data-onb-watype="phone" class="onb2-wa-opt${isUser ? "" : " is-on"}">Phone</button>
+              <button type="button" data-onb-watype="username" class="onb2-wa-opt${isUser ? " is-on" : ""}">Username</button>
+            </span>`,
+          });
+        })()}
         ${_onbField({ label: "Where you’re based", req: true, value: d.city, placeholder: "Medellín, Colombia", badge: f.city ? "CV" : null, hint: "We match you to overlapping US time zones.", data: `data-onb-field="city"` })}
       </div>
       ${_onbField({ label: "LinkedIn", prefix: "linkedin.com/in/", value: d.linkedin, placeholder: "your-handle", hint: "Optional, but profiles with LinkedIn get shortlisted ~2× more often.", data: `data-onb-field="linkedin"` })}
@@ -2826,6 +2846,17 @@ function _onbBind(step) {
   document.querySelector("[data-onb-role-add]")?.addEventListener("click", () => { _onbData.roles.push({ title: "", company: "", from: "", to: "", current: false, open: true }); _onbRender(step); _onbScheduleSave(); });
   document.querySelectorAll("[data-onb-role-edit]").forEach((b) => b.addEventListener("click", () => { const i = Number(b.dataset.onbRoleEdit); _onbData.roles[i].open = !_onbData.roles[i].open; _onbRender(step); }));
   document.querySelectorAll("[data-onb-role-remove]").forEach((b) => b.addEventListener("click", () => { _onbData.roles.splice(Number(b.dataset.onbRoleRemove), 1); _onbRender(step); _onbScheduleSave(); }));
+  document.querySelectorAll("[data-onb-watype]").forEach((b) => b.addEventListener("click", () => {
+    const next = b.dataset.onbWatype;
+    if (_onbData.whatsappType === next) return;
+    _onbData.whatsappType = next;
+    // Clear the value on switch. A phone number is never a valid username and a
+    // username is never a valid number, so carrying it across only produces a
+    // field that looks filled in and isn't.
+    _onbData.phone = "";
+    _onbRender(step);
+    _onbScheduleSave();
+  }));
   document.querySelectorAll("[data-onb-role-current]").forEach((b) => b.addEventListener("click", () => { const i = Number(b.dataset.onbRoleCurrent); _onbData.roles[i].current = !_onbData.roles[i].current; if (_onbData.roles[i].current) _onbData.roles[i].to = ""; _onbRender(step); _onbScheduleSave(); }));
 
   // Best-effort company logos on the Experience step's role cards (async, non-blocking).
@@ -2928,7 +2959,12 @@ function _onbBuildProfile(finishing) {
     expectedSalaryMaxUSD: max,
     expectedSalary: salaryLabel,
     whatsapp: phone,
-    phone,
+    // Which kind of handle this is. Without it nothing downstream can tell a
+    // username from a number, and every wa.me link builder assumes digits.
+    whatsappType: d.whatsappType === "username" ? "username" : "phone",
+    // Only a real number belongs in `phone` — a username here would end up in
+    // dialler fields and SMS.
+    phone: d.whatsappType === "username" ? "" : phone,
     linkedin,
     skills,
     workHistory: roles,
@@ -3913,8 +3949,12 @@ function renderProfileForm(mode = "profile") {
             ${pfCardHead("phone", "Contact")}
             <div class="pf-field-row">
               <label class="pf-field">
-                ${pfLabel("WhatsApp number")}
-                <input class="pf-input" name="whatsapp" value="${escapeAttr(state.candidate?.whatsapp || state.candidate?.phone || "")}" inputmode="tel" autocomplete="tel" placeholder="+57 300 123 4567" required />
+                ${pfLabel(state.candidate?.whatsappType === "username" ? "WhatsApp username" : "WhatsApp number")}
+                <input class="pf-input" name="whatsapp" value="${escapeAttr(state.candidate?.whatsapp || state.candidate?.phone || "")}" inputmode="${state.candidate?.whatsappType === "username" ? "text" : "tel"}" autocomplete="${state.candidate?.whatsappType === "username" ? "off" : "tel"}" placeholder="${state.candidate?.whatsappType === "username" ? "your.username" : "+57 300 123 4567"}" required />
+                <select class="pf-input" name="whatsappType" style="margin-top:6px">
+                  <option value="phone"${state.candidate?.whatsappType === "username" ? "" : " selected"}>This is a phone number</option>
+                  <option value="username"${state.candidate?.whatsappType === "username" ? " selected" : ""}>This is a WhatsApp username</option>
+                </select>
               </label>
               <label class="pf-field">
                 ${pfLabel("LinkedIn", true)}
@@ -4617,7 +4657,10 @@ function bindDashboardEvents() {
       expectedSalaryCurrency: salary.salaryCurrency,
       linkedin: form.get("linkedin"),
       whatsapp: form.get("whatsapp"),
-      phone: form.get("whatsapp"),
+      whatsappType: form.get("whatsappType") === "username" ? "username" : "phone",
+      // A username must never land in `phone` — that field feeds diallers and
+      // SMS, and wa.me builders strip everything that isn't a digit.
+      phone: form.get("whatsappType") === "username" ? "" : form.get("whatsapp"),
       skills: [...new Set(form.getAll("skills").map(canonicalSkillName).filter(Boolean))],
       otherSkills: [],
       languages: collectLanguages(),
