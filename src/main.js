@@ -4591,12 +4591,6 @@ function bindDashboardEvents() {
           score: Math.round((scores.technicalScore * 0.75) + (scores.discScore * 0.25)),
           discProfile
         });
-        // Auto-generate AI insights (fire-and-forget — non-blocking)
-        fetch("https://admin.nearwork.co/api/generate-assessment-insights", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ assessmentId })
-        }).catch(() => null);
         notifyAssessmentCompletion(assessment, {
           score: Math.round((scores.technicalScore * 0.75) + (scores.discScore * 0.25)),
           technicalScore: scores.technicalScore,
